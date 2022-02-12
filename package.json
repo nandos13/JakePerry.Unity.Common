@@ -1,0 +1,15 @@
+{
+  "name": "au.com.jakeperry.unity.common",
+  "version": "1.0.0",
+  "displayName": "Unity Common",
+  "description": "Common functionality that's useful for any Unity project",
+  "unity": "2018.4",
+  "author": {
+    "name": "Jake Perry",
+	"email": "jakeperrygamedev@gmail.com",
+	"url": "https://github.com/nandos13/JakePerry.Unity.Common"
+  },
+  "dependencies": {
+    "au.com.jakeperry.unity.common": "https://github.com/nandos13/JakePerry.Unity.Common.git"
+  }
+}
