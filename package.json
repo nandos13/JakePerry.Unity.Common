@@ -1,6 +1,6 @@
 {
   "name": "au.com.jakeperry.unity.common",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "displayName": "Unity Common",
   "description": "Common functionality that's useful for any Unity project",
   "unity": "2018.4",
