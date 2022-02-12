@@ -8,8 +8,5 @@
     "name": "Jake Perry",
 	"email": "jakeperrygamedev@gmail.com",
 	"url": "https://github.com/nandos13/JakePerry.Unity.Common"
-  },
-  "dependencies": {
-    "au.com.jakeperry.unity.common": "https://github.com/nandos13/JakePerry.Unity.Common.git"
   }
 }
