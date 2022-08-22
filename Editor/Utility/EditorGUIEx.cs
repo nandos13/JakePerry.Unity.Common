@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -8,17 +9,36 @@ namespace JakePerry.Unity
     {
         private sealed class GuiEnabledScope : IDisposable
         {
-            // Flag that remembers the enable state when this scope is created
-            private readonly bool m_wasEnabled;
+            private static readonly Stack<bool> _restoreStates = new Stack<bool>();
+            private static readonly GuiEnabledScope _inst = new GuiEnabledScope();
 
-            public GuiEnabledScope(bool enabled) { m_wasEnabled = GUI.enabled; GUI.enabled = enabled; }
+            public static GuiEnabledScope Push(bool enabled)
+            {
+                _restoreStates.Push(GUI.enabled);
+                GUI.enabled = enabled;
 
-            public void Dispose() { GUI.enabled = m_wasEnabled; }
+                return _inst;
+            }
+
+            public static void Pop()
+            {
+                if (_restoreStates.Count > 0)
+                {
+                    var state = _restoreStates.Pop();
+                    GUI.enabled = state;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Push/pop mismatch.");
+                }
+            }
+
+            public void Dispose() => Pop();
         }
 
-        public static IDisposable DisabledBlock => new GuiEnabledScope(false);
+        public static IDisposable DisabledBlock => GuiEnabledScope.Push(false);
 
-        public static IDisposable EnabledBlock => new GuiEnabledScope(true);
+        public static IDisposable EnabledBlock => GuiEnabledScope.Push(true);
 
         public static IDisposable GetDisabledBlock(bool disabled)
         {
