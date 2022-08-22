@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace JakePerry.Unity
 {
-    public static class RectExtensions
+    public static class RectEx
     {
         public static Rect Pad(this Rect r, float padding)
         {

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace JakePerry.Unity
 {
-    public static class TransformExtensions
+    public static class TransformEx
     {
         public static void GetHierarchyPath(this Transform transform, StringBuilder sb, string delimeter = "/")
         {
