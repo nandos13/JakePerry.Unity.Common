@@ -30,10 +30,5 @@ namespace JakePerry.Unity
 
             return vec;
         }
-
-        public static Vector3 UnitVec(Axis axis)
-        {
-            return UnitVec((int)axis);
-        }
     }
 }
