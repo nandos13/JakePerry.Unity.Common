@@ -1,0 +1,20 @@
+{
+    "name": "JakePerry.Unity.Common.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:d75d0a178808f464eb5abd2d93e12b9a"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "JakePerry.Common.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
