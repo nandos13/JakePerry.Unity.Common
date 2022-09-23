@@ -85,5 +85,46 @@ namespace JakePerry.Unity
             verticalLineRect.x += rect.width - weight;
             EditorGUI.DrawRect(verticalLineRect, color);
         }
+
+        /// <summary>
+        /// Begin a masked area inside your GUI.
+        /// </summary>
+        /// <param name="viewportRect">
+        /// The actual rect occupied on the GUI.
+        /// </param>
+        /// <param name="contentRect">
+        /// The total rect of all content inside the masked area.
+        /// </param>
+        public static void BeginMaskedArea(Rect viewportRect, Rect contentRect)
+        {
+            // Small hack: We take advantage of the masking capabilities of the scroll view,
+            // without actually using the scrolling functionality or rendering the scroll bars.
+            var styleNone = GUIStyle.none;
+            GUI.BeginScrollView(viewportRect, default, contentRect, styleNone, styleNone);
+        }
+
+        /// <summary>
+        /// Ends a masked area started with a call to <see cref="BeginMaskedArea(Rect, Rect)"/>
+        /// </summary>
+        public static void EndMaskedArea()
+        {
+            GUI.EndScrollView();
+        }
+
+        /// <summary>
+        /// Scope for managing a masked area in the GUI.
+        /// </summary>
+        public sealed class MaskedAreaScope : GUI.Scope
+        {
+            public MaskedAreaScope(Rect viewportRect, Rect contentRect)
+            {
+                BeginMaskedArea(viewportRect, contentRect);
+            }
+
+            protected override void CloseScope()
+            {
+                EndMaskedArea();
+            }
+        }
     }
 }
