@@ -6,7 +6,7 @@ namespace JakePerry.Unity
 {
     [Serializable]
     [StructLayout(LayoutKind.Explicit)]
-    public struct SerializeGuid :
+    public partial struct SerializeGuid :
         IComparable,
         IComparable<Guid>,
         IComparable<SerializeGuid>,

@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace JakePerry.Unity
 {
-    public static class EditorGUIEx
+    public static partial class EditorGUIEx
     {
         private sealed class GuiEnabledScope : IDisposable
         {
@@ -125,6 +125,70 @@ namespace JakePerry.Unity
             {
                 EndMaskedArea();
             }
+        }
+
+        public static bool CustomGuiButton(Rect rect, int id, GUIStyle style, GUIContent content)
+        {
+            bool result = false;
+
+            var evt = Event.current;
+            if (evt.type == EventType.Repaint)
+            {
+                rect = style.margin.Remove(rect);
+
+                bool active = DragAndDrop.activeControlID == id;
+                bool hover = rect.Contains(Event.current.mousePosition);
+
+                style.Draw(rect, content, id, active, hover);
+            }
+            else if (evt.type == EventType.MouseDown)
+            {
+                if (GUI.enabled && rect.Contains(evt.mousePosition))
+                {
+                    result = true;
+                }
+            }
+
+            return result;
+        }
+
+        public static int CancellableTextField(Rect rect, ref string text, bool cancelOnClickAway = true)
+        {
+            int code = 0;
+
+            if (GUI.enabled)
+            {
+                var evt = Event.current;
+                if (evt.type == EventType.KeyDown)
+                {
+                    if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                    {
+                        code = 1;
+                    }
+                    if (evt.keyCode == KeyCode.Escape)
+                    {
+                        code = -1;
+                        evt.Use();
+                    }
+                }
+
+                if (cancelOnClickAway)
+                {
+                    if ((evt.type == EventType.MouseDown || evt.type == EventType.TouchDown) &&
+                        !rect.Contains(evt.mousePosition))
+                    {
+                        code = -1;
+                        evt.Use();
+                    }
+                }
+            }
+
+            text = EditorGUI.TextField(rect, text);
+
+            if (code == -1)
+                text = null;
+
+            return code;
         }
     }
 }

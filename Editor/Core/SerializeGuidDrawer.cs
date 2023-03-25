@@ -1,62 +1,96 @@
 using System;
-using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
-using UnityEditor.AnimatedValues;
 using UnityEngine;
+using static JakePerry.Unity.EditorHelpersStatic;
 
 namespace JakePerry.Unity
 {
     [CustomPropertyDrawer(typeof(SerializeGuid))]
     public sealed class SerializeGuidDrawer : PropertyDrawer
     {
-        private const float kElementSpacing = 2f;
-        private const float kOptionsButtonSize = 28;
+        private static readonly int kDragDropControlHint = "SerializeGuidDragDrop".GetHashCode();
+        private static readonly int kOptionsControlHint = "SerializeGuidOptions".GetHashCode();
 
-        private readonly Dictionary<string, PropertyDrawerState> m_stateLookup = new Dictionary<string, PropertyDrawerState>();
+        private struct PasteArgs { public SerializeGuid guid; public SerializedProperty property; }
 
-        private float GetOptionsHeight(PropertyDrawerState state) => EditorGUIUtility.singleLineHeight * state.ShowOptions.faded;
+        private static GUIStyle _centeredObjectFieldStyle;
 
-        private PropertyDrawerState GetState(SerializedProperty property)
+        private static void Copy(object o)
         {
-            var propertyPath = property.propertyPath;
-            if (!m_stateLookup.TryGetValue(propertyPath, out PropertyDrawerState state))
-            {
-                state = PropertyDrawerState.Get(property);
-                m_stateLookup[propertyPath] = state;
-            }
-
-            return state;
+            var guid = (SerializeGuid)o;
+            GUIUtility.systemCopyBuffer = guid.UnityGuidString;
         }
 
-        public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
+        private static void Paste(object o)
         {
-            var layout = new EditorLayoutHelper(0, 0, 0);
-            var state = GetState(property);
+            var args = (PasteArgs)o;
+            SerializeGuid.EditorUtil.SetGuid(args.property, args.guid);
 
-            // Main content rect
-            layout.SimulateRect();
-
-            // Options content rect
-            if (state.ShowOptions.value)
-            {
-                layout.SimulateRect(GetOptionsHeight(state));
-            }
-
-            return layout.TotalHeight;
+            args.property.serializedObject.ApplyModifiedProperties();
         }
 
-        private bool DrawGuidField(Rect r, GUIContent label, string guid, out Guid newGuid)
+        private static bool TryParseClipboard(out SerializeGuid guid)
+        {
+            var buffer = EditorGUIUtility.systemCopyBuffer;
+            if (Guid.TryParse(buffer, out Guid g))
+            {
+                guid = new SerializeGuid(g);
+                return true;
+            }
+
+            guid = default;
+            return false;
+        }
+
+        private static void NewGuid(object o)
+        {
+            var prop = (SerializedProperty)o;
+            SerializeGuid.EditorUtil.SetGuid(prop, SerializeGuid.NewGuid());
+
+            prop.serializedObject.ApplyModifiedProperties();
+        }
+
+        private static void Clear(object o)
+        {
+            var prop = (SerializedProperty)o;
+            SerializeGuid.EditorUtil.SetGuid(prop, default);
+
+            prop.serializedObject.ApplyModifiedProperties();
+        }
+
+        private static void Find(object o)
+        {
+            var guid = (SerializeGuid)o;
+            if (SerializeGuid.EditorUtil.TryFindAsset(guid, out UnityEngine.Object asset))
+            {
+                Selection.activeObject = asset;
+            }
+            else
+            {
+                Debug.LogError($"Failed to find asset with guid {guid} in project.");
+            }
+        }
+
+        private bool DrawGuidField(Rect r, string guid, out SerializeGuid newGuid)
         {
             var changeScope = new EditorGUI.ChangeCheckScope();
             using (changeScope)
             {
-                guid = EditorGUI.DelayedTextField(r, label, guid);
+                // TODO: Change from a text field to regular label, allow it to be set via context menu?
+                guid = EditorGUI.DelayedTextField(r, guid);
             }
 
             if (changeScope.changed)
             {
-                if (Guid.TryParse(guid, out newGuid))
+                if (string.IsNullOrEmpty(guid))
                 {
+                    newGuid = default;
+                    return true;
+                }
+                else if (Guid.TryParse(guid, out Guid g))
+                {
+                    newGuid = new SerializeGuid(g);
                     return true;
                 }
 
@@ -67,212 +101,165 @@ namespace JakePerry.Unity
             return false;
         }
 
-        private void DrawOptionsToggleButton(Rect r, PropertyDrawerState state)
+        private static UnityEngine.Object DoObjectField(Rect r, int id, SerializeGuid guid)
         {
-            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
-            {
-                var icon = EditorGUIUtility.IconContent("d_SceneViewTools@2x");
-                if (GUI.Button(r, icon))
-                {
-                    state.ShowOptions.target = !state.ShowOptions.target;
-                }
-            }
+            SerializeGuid.EditorUtil.TryFindAsset(guid, out UnityEngine.Object asset);
+            return EditorGUI.ObjectField(r, asset, typeof(UnityEngine.Object), allowSceneObjects: false);
         }
 
-        private void DrawNewGuidButton(Rect r, SerializedProperty a, SerializedProperty b)
+        private bool DrawDragDropTarget(Rect r, ref SerializeGuid guid)
         {
-            var newGuidContent = EditorGUIUtility.IconContent("P4_Updating@2x");
-            newGuidContent.tooltip = "Create a new random Guid.";
+            var id = GUIUtility.GetControlID(kDragDropControlHint, FocusType.Keyboard, r);
 
-            if (GUI.Button(r, newGuidContent))
+            bool isDragging = (DragAndDrop.paths?.Length ?? 0) > 0;
+
+            var buttonRect = new RectOffset((int)(r.width - LineHeight), 0, 0, 0).Remove(r);
+
+            var current = Event.current;
+
+            switch (current.type)
             {
-                var newGuid = SerializeGuid.NewGuid();
-
-                unchecked { a.longValue = (long)newGuid.SegmentA; }
-                unchecked { b.longValue = (long)newGuid.SegmentB; }
-            }
-        }
-
-        private void DrawClearGuidButton(Rect r, SerializedProperty a, SerializedProperty b)
-        {
-            var newGuidContent = EditorGUIUtility.IconContent("d_Grid.EraserTool@2x");
-            newGuidContent.tooltip = "Clear the Guid.";
-
-            if (GUI.Button(r, newGuidContent))
-            {
-                var newGuid = (SerializeGuid)default;
-
-                unchecked { a.longValue = (long)newGuid.SegmentA; }
-                unchecked { b.longValue = (long)newGuid.SegmentB; }
-            }
-        }
-
-        private void DrawCopyToClipboardButton(Rect r, SerializeGuid guid)
-        {
-            var clipboardContent = EditorGUIUtility.IconContent("Clipboard");
-            clipboardContent.tooltip = "Copy the current Guid to the clipboard.";
-
-            if (GUI.Button(r, clipboardContent))
-            {
-                GUIUtility.systemCopyBuffer = guid.UnityGuidString;
-            }
-        }
-
-        private void DrawSearchButton(Rect r, SerializeGuid guid)
-        {
-            var searchContent = EditorGUIUtility.IconContent("d_Search Icon");
-            searchContent.tooltip = "Search for asset with this Guid.";
-
-            if (GUI.Button(r, searchContent))
-            {
-                var assetPath = AssetDatabase.GUIDToAssetPath(guid.UnityGuidString);
-                if (!string.IsNullOrEmpty(assetPath))
-                {
-                    var asset = AssetDatabase.LoadMainAssetAtPath(assetPath);
-                    if (asset != null)
+                case EventType.Repaint:
                     {
-                        Selection.activeObject = asset;
+                        var color = GUI.contentColor;
+                        if (isDragging) GUI.contentColor = Color.yellow;
+
+                        var content = EditorGUIUtility.IconContent("GameObject On Icon");
+                        content.tooltip = "Drag & Drop a project asset to capture its GUID";
+
+                        if (_centeredObjectFieldStyle == null)
+                        {
+                            _centeredObjectFieldStyle = new GUIStyle(EditorStyles.objectField);
+                            _centeredObjectFieldStyle.alignment = TextAnchor.MiddleCenter;
+                        }
+
+                        _centeredObjectFieldStyle.Draw(r, content, r.Contains(current.mousePosition), false, isDragging, false);
+                        GUI.contentColor = color;
+                        break;
                     }
-                    else
+
+                case EventType.DragUpdated:
+                case EventType.DragPerform:
                     {
-                        Debug.LogError($"Failed to load asset from the database at path {assetPath}.");
+                        EditorGUI.BeginChangeCheck();
+                        var dragObj = DoObjectField(r, id, guid);
+                        if (EditorGUI.EndChangeCheck())
+                        {
+                            if (dragObj == null)
+                            {
+                                guid = default;
+                                return true;
+                            }
+                            else
+                            {
+                                if (SerializeGuid.EditorUtil.TryGetGuidFromAsset(dragObj, out SerializeGuid g))
+                                {
+                                    guid = g;
+                                    return true;
+                                }
+
+                                Debug.LogError($"Failed to find GUID for the dragged asset");
+                            }
+                        }
+                        break;
                     }
-                }
-                else
-                {
-                    Debug.Log($"No asset found in the database with guid {guid.UnityGuidString}.");
-                }
+
+                case EventType.ExecuteCommand:
+                    {
+                        EditorGUI.BeginChangeCheck();
+                        var selectedObj = DoObjectField(r, id, guid);
+                        if (EditorGUI.EndChangeCheck()) 
+                        {
+                            if (selectedObj == null)
+                            {
+                                guid = default;
+                                return true;
+                            }
+                            else
+                            {
+                                if (SerializeGuid.EditorUtil.TryGetGuidFromAsset(selectedObj, out SerializeGuid g))
+                                {
+                                    guid = g;
+                                    return true;
+                                }
+
+                                Debug.LogError($"Failed to find GUID for the selected asset");
+                            }
+                        }
+                        break;
+                    }
             }
+
+            if (EditorGUIEx.CustomGuiButton(buttonRect, id, EditorGUIEx.GetStyle("m_ObjectFieldButton"), GUIContent.none))
+            {
+                DoObjectField(r, id, guid);
+
+                current.Use();
+                GUIUtility.ExitGUI();
+            }
+
+            return false;
         }
 
-        private void DrawMaskedOptionsArea(Rect r, SerializeGuid guid, SerializedProperty a, SerializedProperty b, PropertyDrawerState state)
+        private void ShowContextMenu(SerializeGuid guid, SerializedProperty property)
         {
-            var optionsRect = r;
-            optionsRect = optionsRect.PadLeft(EditorGUIUtility.labelWidth + kElementSpacing);
+            var menu = new GenericMenu();
 
-            using (new EditorGUIEx.MaskedAreaScope(r.WithHeight(GetOptionsHeight(state)), r))
-            {
-                using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
-                {
-                    const int kButtonCount = 4;
-#if false // Code for clamping button size, if I decide to restore this logic in future
-                    const float kMaxButtonAspect = 2f;
+            menu.AddItem(new GUIContent("Copy"), false, Copy, guid);
 
-                    float minButtonWidth = optionsRect.height;
-                    float maxButtonWidth = minButtonWidth * kMaxButtonAspect;
-                    float totalSpacing = kElementSpacing * (kButtonCount - 1);
+            var pasteFunc = TryParseClipboard(out SerializeGuid clipboardGuid)
+                ? (GenericMenu.MenuFunction2)Paste
+                : null;
+            menu.AddItem(new GUIContent("Paste"), false, pasteFunc, new PasteArgs() { guid = clipboardGuid, property = property });
 
-                    float minTotalSize = minButtonWidth * kButtonCount + totalSpacing;
-                    float maxTotalSize = maxButtonWidth * kButtonCount + totalSpacing;
+            menu.AddSeparator(null);
 
-                    float totalSize = Mathf.Clamp(optionsRect.width, minTotalSize, maxTotalSize);
-                    optionsRect = optionsRect.PadLeft(optionsRect.width - totalSize);
-#endif
+            menu.AddItem(new GUIContent("New Guid"), false, NewGuid, property);
+            menu.AddItem(new GUIContent("Clear"), false, Clear, property);
 
-                    var list = ListPool<Rect>.Get();
-                    RectEx.SliceX(optionsRect, kButtonCount, list, kElementSpacing);
+            menu.AddSeparator(null);
 
-                    DrawNewGuidButton(list[0], a, b);
-                    DrawClearGuidButton(list[1], a, b);
+            menu.AddItem(new GUIContent("Find Asset with Guid"), false, guid == default ? null : Find, guid);
 
-                    DrawCopyToClipboardButton(list[2], guid);
-                    DrawSearchButton(list[3], guid);
+            menu.ShowAsContext();
+        }
 
-                    ListPool<Rect>.Release(ref list);
-                }
-            }
+        public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
+        {
+            return LineHeight;
         }
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
-            if (label is null || label == GUIContent.none)
-                label = new GUIContent("Guid");
+            float dragDropWidth = LineHeight + Spacing + 36;
 
-            var layout = new EditorLayoutHelper(position);
-            var state = GetState(property);
+            position = EditorGUI.PrefixLabel(position, label);
 
-            var a = property.FindPropertyRelative("_a");
-            var b = property.FindPropertyRelative("_b");
+            var guid = SerializeGuid.EditorUtil.GetGuid(property);
 
-            SerializeGuid guid;
-            unchecked { guid = SerializeGuid.Deserialize((ulong)a.longValue, (ulong)b.longValue); }
+            var optionsRect = new RectOffset((int)(position.width - LineHeight - Spacing), 0, 0, 0).Remove(position);
+            var guidRect = new RectOffset(0, (int)(LineHeight + dragDropWidth + Spacing * 2), 0, 0).Remove(position);
+            var dragDropRect = new RectOffset((int)(guidRect.width + Spacing), (int)(optionsRect.width + Spacing), 0, 0).Remove(position);
 
-            var guidRect = layout.GetRect();
-            var optionsButtonRect = guidRect;
-
-            optionsButtonRect = optionsButtonRect.PadLeft(optionsButtonRect.width - kOptionsButtonSize);
-            guidRect = guidRect.PadRight(kElementSpacing + optionsButtonRect.width);
-
-            if (DrawGuidField(guidRect, label, guid.UnityGuidString, out Guid newGuid))
+            if (DrawGuidField(guidRect, guid.UnityGuidString, out SerializeGuid newGuid))
             {
-                guid = new SerializeGuid(newGuid);
-                unchecked { a.longValue = (long)guid.SegmentA; b.longValue = (long)guid.SegmentB; }
+                SerializeGuid.EditorUtil.SetGuid(property, newGuid);
+            }
+            if (DrawDragDropTarget(dragDropRect, ref guid))
+            {
+                SerializeGuid.EditorUtil.SetGuid(property, guid);
             }
 
-            DrawOptionsToggleButton(optionsButtonRect, state);
-
-            if (state.ShowOptions.value)
+            // Draw options context menu button
+            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
             {
-                DrawMaskedOptionsArea(layout.GetRect(), guid, a, b, state);
-            }
-        }
+                var id = GUIUtility.GetControlID(kOptionsControlHint, FocusType.Keyboard, position);
 
-        private readonly struct PropertyDrawerState
-        {
-            private static readonly string kTypeName = typeof(SerializeGuidDrawer).FullName;
-            private static string GetPrefsKey_ShowOptions(string guid) => $"{kTypeName}.ShowOptions.{guid}";
-
-            private readonly AnimBool m_showOptions;
-
-            public AnimBool ShowOptions => m_showOptions;
-
-            private PropertyDrawerState(string prefsGuid)
-            {
-                var showOptionsKey = GetPrefsKey_ShowOptions(prefsGuid);
-                var showOptionsCapture = new AnimBool(EditorPrefs.GetBool(showOptionsKey, false));
-
-                m_showOptions = showOptionsCapture;
-
-                showOptionsCapture.valueChanged.AddListener(() =>
+                var icon = EditorGUIUtility.IconContent("_Menu@2x");
+                if (EditorGUIEx.CustomGuiButton(optionsRect, id, EditorGUIEx.GetStyle("m_IconButton"), icon))
                 {
-                    if (showOptionsCapture != null)
-                        EditorPrefs.SetBool(showOptionsKey, showOptionsCapture.target);
-                });
-            }
-
-            private static string GenerateGuidForEditorPrefs(string propertyPath, Type targetType)
-            {
-                var lastSplitIndex = propertyPath.LastIndexOf('.');
-
-                int segmentCount = 1;
-                for (int i = 0; i < propertyPath.Length; i++)
-                    if (propertyPath[i] == '.')
-                        ++segmentCount;
-
-                ulong ul1, ul2;
-                unchecked
-                {
-                    ulong h1 = (uint)StringComparer.Ordinal.GetHashCode(targetType.FullName);
-                    ulong h2 = (uint)((29 * 31 + propertyPath.Length) * 31 + segmentCount);
-
-                    ulong h3 = (uint)StringComparer.Ordinal.GetHashCode(propertyPath);
-                    ulong h4 = (uint)(lastSplitIndex > -1 ? StringComparer.Ordinal.GetHashCode(propertyPath.Substring(lastSplitIndex + 1)) : 0);
-
-                    ul1 = ((h1 << 32) | h2);
-                    ul2 = ((h3 << 32) | h4);
+                    ShowContextMenu(guid, property);
                 }
-
-                return new SerializeGuid(ul1, ul2).UnityGuidString;
-            }
-
-            public static PropertyDrawerState Get(SerializedProperty property)
-            {
-                var propertyPath = property.propertyPath;
-                var obj = property.serializedObject.targetObject;
-
-                var prefsGuid = GenerateGuidForEditorPrefs(propertyPath, obj.GetType());
-
-                return new PropertyDrawerState(prefsGuid);
             }
         }
     }
