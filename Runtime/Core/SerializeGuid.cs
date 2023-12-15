@@ -31,6 +31,11 @@ namespace JakePerry.Unity
         /// <summary>Second 8-byte segment.</summary>
         public ulong SegmentB { get { unchecked { return (ulong)_b; } } }
 
+        /// <summary>
+        /// Indicates whether the current object is equal to the default instance.
+        /// </summary>
+        public bool IsDefault => _a == 0L && _b == 0L;
+
         public SerializeGuid(Guid guid)
         {
             _a = _b = 0;
@@ -121,6 +126,27 @@ namespace JakePerry.Unity
             return new SerializeGuid() { _a = la, _b = lb };
         }
 
+#if UNITY_EDITOR
+        /// <summary>
+        /// Editor-only. Attempt to deserialize a <see cref="SerializeGuid"/> represented
+        /// by the given <paramref name="property"/>.
+        /// </summary>
+        public static bool TryDeserializeGuid(UnityEditor.SerializedProperty property, out SerializeGuid guid)
+        {
+            var a = property.FindPropertyRelative("_a");
+            var b = property.FindPropertyRelative("_b");
+
+            if (a == null || b == null)
+            {
+                guid = default;
+                return false;
+            }
+
+            unchecked { guid = SerializeGuid.Deserialize((ulong)a.longValue, (ulong)b.longValue); }
+            return true;
+        }
+#endif
+
         public static implicit operator Guid(SerializeGuid guid)
         {
             return guid.m_guid;
@@ -136,34 +162,12 @@ namespace JakePerry.Unity
             return guid.UnityGuidString;
         }
 
-        public static bool operator ==(SerializeGuid left, SerializeGuid right)
-        {
-            return left.Equals(right);
-        }
+        public static bool operator ==(SerializeGuid left, SerializeGuid right) => left.Equals(right);
+        public static bool operator !=(SerializeGuid left, SerializeGuid right) => !(left == right);
 
-        public static bool operator !=(SerializeGuid left, SerializeGuid right)
-        {
-            return !(left == right);
-        }
-
-        public static bool operator <(SerializeGuid left, SerializeGuid right)
-        {
-            return left.CompareTo(right) < 0;
-        }
-
-        public static bool operator <=(SerializeGuid left, SerializeGuid right)
-        {
-            return left.CompareTo(right) <= 0;
-        }
-
-        public static bool operator >(SerializeGuid left, SerializeGuid right)
-        {
-            return left.CompareTo(right) > 0;
-        }
-
-        public static bool operator >=(SerializeGuid left, SerializeGuid right)
-        {
-            return left.CompareTo(right) >= 0;
-        }
+        public static bool operator <(SerializeGuid left, SerializeGuid right) => left.CompareTo(right) < 0;
+        public static bool operator <=(SerializeGuid left, SerializeGuid right) => left.CompareTo(right) <= 0;
+        public static bool operator >(SerializeGuid left, SerializeGuid right) => left.CompareTo(right) > 0;
+        public static bool operator >=(SerializeGuid left, SerializeGuid right) => left.CompareTo(right) >= 0;
     }
 }

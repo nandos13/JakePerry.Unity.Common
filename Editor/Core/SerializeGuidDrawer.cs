@@ -12,40 +12,23 @@ namespace JakePerry.Unity
         private const float kElementSpacing = 2f;
         private const float kOptionsButtonSize = 28;
 
-        private readonly Dictionary<string, PropertyDrawerState> m_stateLookup = new Dictionary<string, PropertyDrawerState>();
+        private static readonly Dictionary<string, PropertyDrawerState> _stateLookup = new Dictionary<string, PropertyDrawerState>();
 
-        private float GetOptionsHeight(PropertyDrawerState state) => EditorGUIUtility.singleLineHeight * state.ShowOptions.faded;
+        private static float GetOptionsHeight(PropertyDrawerState state) => EditorGUIUtility.singleLineHeight * state.ShowOptions.faded;
 
-        private PropertyDrawerState GetState(SerializedProperty property)
+        private static PropertyDrawerState GetState(SerializedProperty property)
         {
             var propertyPath = property.propertyPath;
-            if (!m_stateLookup.TryGetValue(propertyPath, out PropertyDrawerState state))
+            if (!_stateLookup.TryGetValue(propertyPath, out PropertyDrawerState state))
             {
                 state = PropertyDrawerState.Get(property);
-                m_stateLookup[propertyPath] = state;
+                _stateLookup[propertyPath] = state;
             }
 
             return state;
         }
 
-        public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
-        {
-            var layout = new EditorLayoutHelper(0, 0, 0);
-            var state = GetState(property);
-
-            // Main content rect
-            layout.SimulateRect();
-
-            // Options content rect
-            if (state.ShowOptions.value)
-            {
-                layout.SimulateRect(GetOptionsHeight(state));
-            }
-
-            return layout.TotalHeight;
-        }
-
-        private bool DrawGuidField(Rect r, GUIContent label, string guid, out Guid newGuid)
+        private static bool DrawGuidField(Rect r, GUIContent label, string guid, out Guid newGuid)
         {
             var changeScope = new EditorGUI.ChangeCheckScope();
             using (changeScope)
@@ -67,7 +50,7 @@ namespace JakePerry.Unity
             return false;
         }
 
-        private void DrawOptionsToggleButton(Rect r, PropertyDrawerState state)
+        private static void DrawOptionsToggleButton(Rect r, PropertyDrawerState state)
         {
             using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
             {
@@ -79,7 +62,7 @@ namespace JakePerry.Unity
             }
         }
 
-        private void DrawNewGuidButton(Rect r, SerializedProperty a, SerializedProperty b)
+        private static void DrawNewGuidButton(Rect r, SerializedProperty a, SerializedProperty b)
         {
             var newGuidContent = EditorGUIUtility.IconContent("P4_Updating@2x");
             newGuidContent.tooltip = "Create a new random Guid.";
@@ -93,7 +76,7 @@ namespace JakePerry.Unity
             }
         }
 
-        private void DrawClearGuidButton(Rect r, SerializedProperty a, SerializedProperty b)
+        private static void DrawClearGuidButton(Rect r, SerializedProperty a, SerializedProperty b)
         {
             var newGuidContent = EditorGUIUtility.IconContent("d_Grid.EraserTool@2x");
             newGuidContent.tooltip = "Clear the Guid.";
@@ -107,7 +90,7 @@ namespace JakePerry.Unity
             }
         }
 
-        private void DrawCopyToClipboardButton(Rect r, SerializeGuid guid)
+        private static void DrawCopyToClipboardButton(Rect r, SerializeGuid guid)
         {
             var clipboardContent = EditorGUIUtility.IconContent("Clipboard");
             clipboardContent.tooltip = "Copy the current Guid to the clipboard.";
@@ -118,7 +101,7 @@ namespace JakePerry.Unity
             }
         }
 
-        private void DrawSearchButton(Rect r, SerializeGuid guid)
+        private static void DrawSearchButton(Rect r, SerializeGuid guid)
         {
             var searchContent = EditorGUIUtility.IconContent("d_Search Icon");
             searchContent.tooltip = "Search for asset with this Guid.";
@@ -145,7 +128,7 @@ namespace JakePerry.Unity
             }
         }
 
-        private void DrawMaskedOptionsArea(Rect r, SerializeGuid guid, SerializedProperty a, SerializedProperty b, PropertyDrawerState state)
+        private static void DrawMaskedOptionsArea(Rect r, SerializeGuid guid, SerializedProperty a, SerializedProperty b, PropertyDrawerState state)
         {
             var optionsRect = r;
             optionsRect = optionsRect.PadLeft(EditorGUIUtility.labelWidth + kElementSpacing);
@@ -183,11 +166,8 @@ namespace JakePerry.Unity
             }
         }
 
-        public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
+        private static void DrawGUI(Rect position, SerializedProperty property, GUIContent label, bool showOptions)
         {
-            if (label is null || label == GUIContent.none)
-                label = new GUIContent("Guid");
-
             var layout = new EditorLayoutHelper(position);
             var state = GetState(property);
 
@@ -201,7 +181,11 @@ namespace JakePerry.Unity
             var optionsButtonRect = guidRect;
 
             optionsButtonRect = optionsButtonRect.PadLeft(optionsButtonRect.width - kOptionsButtonSize);
-            guidRect = guidRect.PadRight(kElementSpacing + optionsButtonRect.width);
+
+            if (showOptions)
+            {
+                guidRect = guidRect.PadRight(kElementSpacing + optionsButtonRect.width);
+            }
 
             if (DrawGuidField(guidRect, label, guid.UnityGuidString, out Guid newGuid))
             {
@@ -209,12 +193,45 @@ namespace JakePerry.Unity
                 unchecked { a.longValue = (long)guid.SegmentA; b.longValue = (long)guid.SegmentB; }
             }
 
-            DrawOptionsToggleButton(optionsButtonRect, state);
+            if (showOptions)
+            {
+                DrawOptionsToggleButton(optionsButtonRect, state);
 
+                if (state.ShowOptions.value)
+                {
+                    DrawMaskedOptionsArea(layout.GetRect(), guid, a, b, state);
+                }
+            }
+        }
+
+        public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
+        {
+            var layout = new EditorLayoutHelper(0, 0, 0);
+            var state = GetState(property);
+
+            // Main content rect
+            layout.SimulateRect();
+
+            // Options content rect
             if (state.ShowOptions.value)
             {
-                DrawMaskedOptionsArea(layout.GetRect(), guid, a, b, state);
+                layout.SimulateRect(GetOptionsHeight(state));
             }
+
+            return layout.TotalHeight;
+        }
+
+        public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
+        {
+            if (label is null || label == GUIContent.none)
+                label = new GUIContent("Guid");
+
+            DrawGUI(position, property, label, true);
+        }
+
+        public static void DrawGUIWithoutOptions(Rect position, SerializedProperty property, GUIContent label)
+        {
+            DrawGUI(position, property, label, false);
         }
 
         private readonly struct PropertyDrawerState

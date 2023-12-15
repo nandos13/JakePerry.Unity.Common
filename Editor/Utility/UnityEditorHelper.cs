@@ -7,6 +7,8 @@ namespace JakePerry.Unity
 {
     public static class UnityEditorHelper
     {
+        private const string kResourcesDir = "/Resources/";
+
         public static Texture2D GetMessageIcon(MessageType messageType)
         {
             var method = typeof(EditorGUIUtility).GetMethod("GetHelpIcon", BindingFlags.Static | BindingFlags.NonPublic);
@@ -85,6 +87,52 @@ namespace JakePerry.Unity
             }
 
             return GetMemberFromType(definingType, memberName);
+        }
+
+        /// <summary>
+        /// Attempts to find the Resources-relative path for an arbitrary asset located
+        /// at the given path within the Asset Database.
+        /// </summary>
+        /// <param name="path">
+        /// A file path relative to the project.
+        /// </param>
+        /// <param name="resourcePath">
+        /// The corresponding load path relative to the Resources folder of the asset,
+        /// or an empty string if it could not be found.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> if the asset was found and exists within a Resources
+        /// folder; otherwise, <see langword="false"/>.
+        /// </returns>
+        public static bool TryGetResourcesPath(string path, out string resourcePath)
+        {
+            resourcePath = string.Empty;
+
+            if (string.IsNullOrEmpty(path))
+                return false;
+
+            if (!string.IsNullOrEmpty(path))
+            {
+                // Find the Resources directory in the path
+                var resourcesIndex = path.LastIndexOf(kResourcesDir);
+                if (resourcesIndex > -1)
+                {
+                    var start = resourcesIndex + kResourcesDir.Length;
+                    var length = path.Length - start;
+
+                    // Remove file extension suffix (eg .prefab, .unity, etc)
+                    var lastSeparatorIndex = path.LastIndexOf('/');
+                    var lastPeriodIndex = path.LastIndexOf('.');
+
+                    if (lastPeriodIndex > lastSeparatorIndex)
+                        length -= (path.Length - lastPeriodIndex);
+
+                    resourcePath = path.Substring(start, length);
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }
