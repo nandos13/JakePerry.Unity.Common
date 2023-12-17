@@ -6,6 +6,8 @@ namespace JakePerry.Unity
 {
     public static partial class EditorGUIEx
     {
+        private static readonly int kOptionsControlHint = "SerializeGuidOptions".GetHashCode();
+
         /// <summary>
         /// Returns the internal 'CurrentStyles' instance.
         /// </summary>
@@ -21,6 +23,23 @@ namespace JakePerry.Unity
         public static GUIStyle GetStyle(string fieldName)
         {
             return (GUIStyle)typeof(EditorStyles).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(CurrentStyles);
+        }
+
+        public static bool ThreeDotMenuButton(Rect position)
+        {
+            bool result = false;
+            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+            {
+                var id = GUIUtility.GetControlID(kOptionsControlHint, FocusType.Keyboard, position);
+
+                var icon = EditorGUIUtility.IconContent("_Menu@2x");
+                if (CustomGuiButton(position, id, GetStyle("m_IconButton"), icon))
+                {
+                    result = true;
+                }
+            }
+
+            return result;
         }
     }
 }

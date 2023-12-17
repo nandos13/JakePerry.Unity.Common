@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using static JakePerry.Unity.EditorHelpersStatic;
@@ -10,67 +9,8 @@ namespace JakePerry.Unity
     public sealed class SerializeGuidDrawer : PropertyDrawer
     {
         private static readonly int kDragDropControlHint = "SerializeGuidDragDrop".GetHashCode();
-        private static readonly int kOptionsControlHint = "SerializeGuidOptions".GetHashCode();
-
-        private struct PasteArgs { public SerializeGuid guid; public SerializedProperty property; }
 
         private static GUIStyle _centeredObjectFieldStyle;
-
-        private static void Copy(object o)
-        {
-            var guid = (SerializeGuid)o;
-            GUIUtility.systemCopyBuffer = guid.UnityGuidString;
-        }
-
-        private static void Paste(object o)
-        {
-            var args = (PasteArgs)o;
-            SerializeGuid.EditorUtil.SetGuid(args.property, args.guid);
-
-            args.property.serializedObject.ApplyModifiedProperties();
-        }
-
-        private static bool TryParseClipboard(out SerializeGuid guid)
-        {
-            var buffer = EditorGUIUtility.systemCopyBuffer;
-            if (Guid.TryParse(buffer, out Guid g))
-            {
-                guid = new SerializeGuid(g);
-                return true;
-            }
-
-            guid = default;
-            return false;
-        }
-
-        private static void NewGuid(object o)
-        {
-            var prop = (SerializedProperty)o;
-            SerializeGuid.EditorUtil.SetGuid(prop, SerializeGuid.NewGuid());
-
-            prop.serializedObject.ApplyModifiedProperties();
-        }
-
-        private static void Clear(object o)
-        {
-            var prop = (SerializedProperty)o;
-            SerializeGuid.EditorUtil.SetGuid(prop, default);
-
-            prop.serializedObject.ApplyModifiedProperties();
-        }
-
-        private static void Find(object o)
-        {
-            var guid = (SerializeGuid)o;
-            if (SerializeGuid.EditorUtil.TryFindAsset(guid, out UnityEngine.Object asset))
-            {
-                Selection.activeObject = asset;
-            }
-            else
-            {
-                Debug.LogError($"Failed to find asset with guid {guid} in project.");
-            }
-        }
 
         private bool DrawGuidField(Rect r, string guid, out SerializeGuid newGuid)
         {
@@ -205,21 +145,17 @@ namespace JakePerry.Unity
         {
             var menu = new GenericMenu();
 
-            menu.AddItem(new GUIContent("Copy"), false, Copy, guid);
-
-            var pasteFunc = TryParseClipboard(out SerializeGuid clipboardGuid)
-                ? (GenericMenu.MenuFunction2)Paste
-                : null;
-            menu.AddItem(new GUIContent("Paste"), false, pasteFunc, new PasteArgs() { guid = clipboardGuid, property = property });
+            SerializeGuid.EditorUtil.AddCopyGuidCommand(menu, guid);
+            SerializeGuid.EditorUtil.AddPasteGuidCommand(menu, property);
 
             menu.AddSeparator(null);
 
-            menu.AddItem(new GUIContent("New Guid"), false, NewGuid, property);
-            menu.AddItem(new GUIContent("Clear"), false, Clear, property);
+            SerializeGuid.EditorUtil.AddNewGuidCommand(menu, property);
+            SerializeGuid.EditorUtil.AddClearGuidCommand(menu, property);
 
             menu.AddSeparator(null);
 
-            menu.AddItem(new GUIContent("Find Asset with Guid"), false, guid == default ? null : Find, guid);
+            SerializeGuid.EditorUtil.AddFindAssetFromGuidCommand(menu, guid);
 
             menu.ShowAsContext();
         }
@@ -251,15 +187,9 @@ namespace JakePerry.Unity
             }
 
             // Draw options context menu button
-            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+            if (EditorGUIEx.ThreeDotMenuButton(optionsRect))
             {
-                var id = GUIUtility.GetControlID(kOptionsControlHint, FocusType.Keyboard, position);
-
-                var icon = EditorGUIUtility.IconContent("_Menu@2x");
-                if (EditorGUIEx.CustomGuiButton(optionsRect, id, EditorGUIEx.GetStyle("m_IconButton"), icon))
-                {
-                    ShowContextMenu(guid, property);
-                }
+                ShowContextMenu(guid, property);
             }
         }
     }

@@ -1,5 +1,7 @@
 #if UNITY_EDITOR
+using System;
 using UnityEditor;
+using UnityEngine;
 
 namespace JakePerry.Unity
 {
@@ -11,6 +13,8 @@ namespace JakePerry.Unity
         /// </summary>
         public static class EditorUtil
         {
+            private struct PasteArgs { public SerializeGuid guid; public SerializedProperty property; }
+
             internal static void GetGuidParts(
                 SerializedProperty property,
                 out SerializedProperty a,
@@ -101,6 +105,90 @@ namespace JakePerry.Unity
                 }
 
                 return false;
+            }
+
+            private static void Copy(object o)
+            {
+                var guid = (SerializeGuid)o;
+                GUIUtility.systemCopyBuffer = guid.UnityGuidString;
+            }
+
+            private static void Paste(object o)
+            {
+                var args = (PasteArgs)o;
+                SetGuid(args.property, args.guid);
+
+                args.property.serializedObject.ApplyModifiedProperties();
+            }
+
+            private static bool TryParseClipboard(out SerializeGuid guid)
+            {
+                var buffer = EditorGUIUtility.systemCopyBuffer;
+                if (Guid.TryParse(buffer, out Guid g))
+                {
+                    guid = new SerializeGuid(g);
+                    return true;
+                }
+
+                guid = default;
+                return false;
+            }
+
+            private static void NewGuid(object o)
+            {
+                var prop = (SerializedProperty)o;
+                SetGuid(prop, SerializeGuid.NewGuid());
+
+                prop.serializedObject.ApplyModifiedProperties();
+            }
+
+            private static void Clear(object o)
+            {
+                var prop = (SerializedProperty)o;
+                SetGuid(prop, default);
+
+                prop.serializedObject.ApplyModifiedProperties();
+            }
+
+            private static void Find(object o)
+            {
+                var guid = (SerializeGuid)o;
+                if (TryFindAsset(guid, out UnityEngine.Object asset))
+                {
+                    Selection.activeObject = asset;
+                }
+                else
+                {
+                    Debug.LogError($"Failed to find asset with guid {guid} in project.");
+                }
+            }
+
+            public static void AddCopyGuidCommand(GenericMenu menu, SerializeGuid guid, string text = "Copy")
+            {
+                menu.AddItem(new GUIContent(text), false, Copy, guid);
+            }
+
+            public static void AddPasteGuidCommand(GenericMenu menu, SerializedProperty property, string text = "Paste")
+            {
+                var pasteFunc = TryParseClipboard(out SerializeGuid clipboardGuid)
+                    ? (GenericMenu.MenuFunction2)Paste
+                    : null;
+                menu.AddItem(new GUIContent(text), false, pasteFunc, new PasteArgs() { guid = clipboardGuid, property = property });
+            }
+
+            public static void AddNewGuidCommand(GenericMenu menu, SerializedProperty property, string text = "New Guid")
+            {
+                menu.AddItem(new GUIContent(text), false, NewGuid, property);
+            }
+
+            public static void AddClearGuidCommand(GenericMenu menu, SerializedProperty property, string text = "Clear")
+            {
+                menu.AddItem(new GUIContent(text), false, Clear, property);
+            }
+
+            public static void AddFindAssetFromGuidCommand(GenericMenu menu, SerializeGuid guid, string text = "Find Asset with Guid")
+            {
+                menu.AddItem(new GUIContent(text), false, guid == default ? null : Find, guid);
             }
         }
     }

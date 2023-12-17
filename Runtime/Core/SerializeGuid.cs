@@ -20,6 +20,11 @@ namespace JakePerry.Unity
         [FieldOffset(8), SerializeField] private long _b;
 
         /// <summary>
+        /// Indicates whether the current object is equal to the default instance.
+        /// </summary>
+        public bool IsDefault => _a == 0L && _b == 0L;
+
+        /// <summary>
         /// A string representation of the Guid without parenthesis or hyphens.
         /// This is the format generally used by Unity for asset guids etc.
         /// </summary>
@@ -136,34 +141,12 @@ namespace JakePerry.Unity
             return guid.UnityGuidString;
         }
 
-        public static bool operator ==(SerializeGuid left, SerializeGuid right)
-        {
-            return left.Equals(right);
-        }
+        public static bool operator ==(SerializeGuid left, SerializeGuid right) => left.Equals(right);
+        public static bool operator !=(SerializeGuid left, SerializeGuid right) => !(left == right);
 
-        public static bool operator !=(SerializeGuid left, SerializeGuid right)
-        {
-            return !(left == right);
-        }
-
-        public static bool operator <(SerializeGuid left, SerializeGuid right)
-        {
-            return left.CompareTo(right) < 0;
-        }
-
-        public static bool operator <=(SerializeGuid left, SerializeGuid right)
-        {
-            return left.CompareTo(right) <= 0;
-        }
-
-        public static bool operator >(SerializeGuid left, SerializeGuid right)
-        {
-            return left.CompareTo(right) > 0;
-        }
-
-        public static bool operator >=(SerializeGuid left, SerializeGuid right)
-        {
-            return left.CompareTo(right) >= 0;
-        }
+        public static bool operator <(SerializeGuid left, SerializeGuid right) => left.CompareTo(right) < 0;
+        public static bool operator <=(SerializeGuid left, SerializeGuid right) => left.CompareTo(right) <= 0;
+        public static bool operator >(SerializeGuid left, SerializeGuid right) => left.CompareTo(right) > 0;
+        public static bool operator >=(SerializeGuid left, SerializeGuid right) => left.CompareTo(right) >= 0;
     }
 }
