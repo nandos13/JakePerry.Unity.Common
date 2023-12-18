@@ -1,5 +1,3 @@
-using System;
-using UnityEditor;
 using UnityEngine;
 
 namespace JakePerry.Unity
@@ -16,7 +14,7 @@ namespace JakePerry.Unity
         {
             if (guid.IsDefault) return null;
 
-            if (ResourceGuidManifest.TryGetResourcePath(guid.UnityGuidString, out string resourcePath))
+            if (ResourceGuidManifest.TryGetResourcePath(guid, out string resourcePath))
             {
                 return Resources.Load<T>(resourcePath);
             }
