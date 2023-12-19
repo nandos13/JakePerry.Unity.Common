@@ -14,14 +14,12 @@ namespace JakePerry.Unity
 
         private bool DrawGuidField(Rect r, string guid, out SerializeGuid newGuid)
         {
-            var changeScope = new EditorGUI.ChangeCheckScope();
-            using (changeScope)
-            {
-                // TODO: Change from a text field to regular label, allow it to be set via context menu?
-                guid = EditorGUI.DelayedTextField(r, guid);
-            }
+            EditorGUI.BeginChangeCheck();
 
-            if (changeScope.changed)
+            // TODO: Change from a text field to regular label, allow it to be set via context menu?
+            guid = EditorGUI.DelayedTextField(r, guid);
+
+            if (EditorGUI.EndChangeCheck())
             {
                 if (string.IsNullOrEmpty(guid))
                 {
