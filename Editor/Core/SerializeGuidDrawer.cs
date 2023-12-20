@@ -104,26 +104,34 @@ namespace JakePerry.Unity
 
                 case EventType.ExecuteCommand:
                     {
-                        EditorGUI.BeginChangeCheck();
-                        var selectedObj = DoObjectField(r, id, guid);
-                        if (EditorGUI.EndChangeCheck()) 
+                        string commandName = current.commandName;
+                        if (EditorGUIEx.ObjectSelector.ObjectSelectorID == id &&
+                            StringComparer.Ordinal.Equals(commandName, EditorGUIEx.ObjectSelector.ObjectSelectorUpdatedCommand))
                         {
-                            if (selectedObj == null)
+                            current.Use();
+
+                            EditorGUI.BeginChangeCheck();
+                            var selectedObj = DoObjectField(r, id, guid);
+                            if (EditorGUI.EndChangeCheck())
                             {
-                                guid = default;
-                                return true;
-                            }
-                            else
-                            {
-                                if (SerializeGuid.EditorUtil.TryGetGuidFromAsset(selectedObj, out SerializeGuid g))
+                                if (selectedObj == null)
                                 {
-                                    guid = g;
+                                    guid = default;
                                     return true;
                                 }
+                                else
+                                {
+                                    if (SerializeGuid.EditorUtil.TryGetGuidFromAsset(selectedObj, out SerializeGuid g))
+                                    {
+                                        guid = g;
+                                        return true;
+                                    }
 
-                                Debug.LogError($"Failed to find GUID for the selected asset");
+                                    Debug.LogError($"Failed to find GUID for the selected asset");
+                                }
                             }
                         }
+
                         break;
                     }
             }
