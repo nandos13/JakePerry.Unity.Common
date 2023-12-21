@@ -60,7 +60,15 @@ namespace JakePerry.Unity
             /// Exposes the ID of the control which is targeted by the current ObjectSelector instance.
             /// </summary>
             public static int ObjectSelectorID
-                => (int)(_objectSelectorIDProperty ??= ObjectSelectorType.GetField("objectSelectorID", (BindingFlags)0x24)).GetValue(ObjectSelectorInst);
+            {
+                get
+                {
+#if UNITY_2021_3_OR_NEWER
+                    return EditorGUIUtility.GetObjectPickerControlID();
+#endif
+                    return (int)(_objectSelectorIDProperty ??= ObjectSelectorType.GetField("objectSelectorID", (BindingFlags)0x24)).GetValue(ObjectSelectorInst);
+                }
+            }
         }
     }
 }
