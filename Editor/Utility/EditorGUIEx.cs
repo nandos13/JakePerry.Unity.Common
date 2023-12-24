@@ -190,5 +190,22 @@ namespace JakePerry.Unity
 
             return code;
         }
+
+        public static bool ThreeDotMenuButton(Rect position)
+        {
+            bool result = false;
+            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+            {
+                var id = GUIUtility.GetControlID(kOptionsControlHint, FocusType.Keyboard, position);
+
+                var icon = EditorGUIUtility.IconContent("_Menu@2x");
+                if (CustomGuiButton(position, id, GetStyle("m_IconButton"), icon))
+                {
+                    result = true;
+                }
+            }
+
+            return result;
+        }
     }
 }

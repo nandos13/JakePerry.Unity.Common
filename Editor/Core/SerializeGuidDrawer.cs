@@ -16,7 +16,6 @@ namespace JakePerry.Unity
         {
             EditorGUI.BeginChangeCheck();
 
-            // TODO: Change from a text field to regular label, allow it to be set via context menu?
             guid = EditorGUI.DelayedTextField(r, guid);
 
             if (EditorGUI.EndChangeCheck())
@@ -176,26 +175,28 @@ namespace JakePerry.Unity
             float dragDropWidth = LineHeight + Spacing + 36;
 
             position = EditorGUI.PrefixLabel(position, label);
-
-            var guid = SerializeGuid.EditorUtil.GetGuid(property);
-
-            var optionsRect = new RectOffset((int)(position.width - LineHeight - Spacing), 0, 0, 0).Remove(position);
-            var guidRect = new RectOffset(0, (int)(LineHeight + dragDropWidth + Spacing * 2), 0, 0).Remove(position);
-            var dragDropRect = new RectOffset((int)(guidRect.width + Spacing), (int)(optionsRect.width + Spacing), 0, 0).Remove(position);
-
-            if (DrawGuidField(guidRect, guid.UnityGuidString, out SerializeGuid newGuid))
+            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
             {
-                SerializeGuid.EditorUtil.SetGuid(property, newGuid);
-            }
-            if (DrawDragDropTarget(dragDropRect, ref guid))
-            {
-                SerializeGuid.EditorUtil.SetGuid(property, guid);
-            }
+                var guid = SerializeGuid.EditorUtil.GetGuid(property);
 
-            // Draw options context menu button
-            if (EditorGUIEx.ThreeDotMenuButton(optionsRect))
-            {
-                ShowContextMenu(guid, property);
+                var optionsRect = new RectOffset((int)(position.width - LineHeight - Spacing), 0, 0, 0).Remove(position);
+                var guidRect = new RectOffset(0, (int)(LineHeight + dragDropWidth + Spacing * 2), 0, 0).Remove(position);
+                var dragDropRect = new RectOffset((int)(guidRect.width + Spacing), (int)(optionsRect.width + Spacing), 0, 0).Remove(position);
+
+                if (DrawGuidField(guidRect, guid.UnityGuidString, out SerializeGuid newGuid))
+                {
+                    SerializeGuid.EditorUtil.SetGuid(property, newGuid);
+                }
+                if (DrawDragDropTarget(dragDropRect, ref guid))
+                {
+                    SerializeGuid.EditorUtil.SetGuid(property, guid);
+                }
+
+                // Draw options context menu button
+                if (EditorGUIEx.ThreeDotMenuButton(optionsRect))
+                {
+                    ShowContextMenu(guid, property);
+                }
             }
         }
     }

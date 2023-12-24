@@ -24,22 +24,5 @@ namespace JakePerry.Unity
         {
             return (GUIStyle)typeof(EditorStyles).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(CurrentStyles);
         }
-
-        public static bool ThreeDotMenuButton(Rect position)
-        {
-            bool result = false;
-            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
-            {
-                var id = GUIUtility.GetControlID(kOptionsControlHint, FocusType.Keyboard, position);
-
-                var icon = EditorGUIUtility.IconContent("_Menu@2x");
-                if (CustomGuiButton(position, id, GetStyle("m_IconButton"), icon))
-                {
-                    result = true;
-                }
-            }
-
-            return result;
-        }
     }
 }

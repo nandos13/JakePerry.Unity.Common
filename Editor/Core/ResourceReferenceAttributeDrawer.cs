@@ -10,8 +10,6 @@ namespace JakePerry.Unity
     {
         private static bool ShowErrorContent(ref Rect position, string tooltip, bool warn = false)
         {
-            //var iconRect = position.WithWidth(position.height);
-            //position = position.PadLeft(iconRect.width + Spacing);
             var iconRect = position.PadLeft(position.width - position.height);
             position = position.PadRight(iconRect.width + Spacing);
 
@@ -172,33 +170,36 @@ namespace JakePerry.Unity
         {
             position = EditorGUI.PrefixLabel(position, label);
 
-            var member = UnityEditorHelper.GetSerializedMember(property);
-
-            if (member.MemberType != typeof(SerializeGuid) &&
-                member.MemberType != typeof(SerializeGuid[]) &&
-                member.MemberType != typeof(List<SerializeGuid>))
+            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
             {
-                const string kText = "Incorrect member type";
-                const string kTooltip = nameof(ResourceReferenceAttribute) + " should only be used with the " + nameof(SerializeGuid) + " type";
+                var member = UnityEditorHelper.GetSerializedMember(property);
 
-                ShowErrorContent(ref position, kTooltip);
-                EditorGUI.LabelField(position, new GUIContent(kText, kTooltip), EditorStyles.boldLabel);
-                return;
-            }
+                if (member.MemberType != typeof(SerializeGuid) &&
+                    member.MemberType != typeof(SerializeGuid[]) &&
+                    member.MemberType != typeof(List<SerializeGuid>))
+                {
+                    const string kText = "Incorrect member type";
+                    const string kTooltip = nameof(ResourceReferenceAttribute) + " should only be used with the " + nameof(SerializeGuid) + " type";
 
-            var optionsRect = new RectOffset((int)(position.width - position.height - Spacing), 0, 0, 0).Remove(position);
-            position = position.PadRight(optionsRect.width + Spacing);
+                    ShowErrorContent(ref position, kTooltip);
+                    EditorGUI.LabelField(position, new GUIContent(kText, kTooltip), EditorStyles.boldLabel);
+                    return;
+                }
 
-            var guid = SerializeGuid.EditorUtil.GetGuid(property);
+                var optionsRect = new RectOffset((int)(position.width - position.height - Spacing), 0, 0, 0).Remove(position);
+                position = position.PadRight(optionsRect.width + Spacing);
 
-            if (DrawAssetField(position, ref guid))
-            {
-                SerializeGuid.EditorUtil.SetGuid(property, guid);
-            }
+                var guid = SerializeGuid.EditorUtil.GetGuid(property);
 
-            if (EditorGUIEx.ThreeDotMenuButton(optionsRect))
-            {
-                ShowContextMenu(guid, property);
+                if (DrawAssetField(position, ref guid))
+                {
+                    SerializeGuid.EditorUtil.SetGuid(property, guid);
+                }
+
+                if (EditorGUIEx.ThreeDotMenuButton(optionsRect))
+                {
+                    ShowContextMenu(guid, property);
+                }
             }
         }
     }

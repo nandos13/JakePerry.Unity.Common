@@ -66,7 +66,9 @@ namespace JakePerry.Unity
 #if UNITY_2021_3_OR_NEWER
                     return EditorGUIUtility.GetObjectPickerControlID();
 #endif
+#pragma warning disable CS0162 // Unreachable code detected
                     return (int)(_objectSelectorIDProperty ??= ObjectSelectorType.GetField("objectSelectorID", (BindingFlags)0x24)).GetValue(ObjectSelectorInst);
+#pragma warning restore CS0162
                 }
             }
         }
