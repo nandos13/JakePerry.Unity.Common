@@ -1,6 +1,7 @@
 using System;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UIElements;
 using static JakePerry.Unity.EditorHelpersStatic;
 
 namespace JakePerry.Unity
@@ -172,6 +173,9 @@ namespace JakePerry.Unity
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
+            // For reasons I can't comprehend, rect height is 2 pixels larger when drawing an array element
+            position.height = GetPropertyHeight(property, label);
+
             float dragDropWidth = LineHeight + Spacing + 36;
 
             position = EditorGUI.PrefixLabel(position, label);

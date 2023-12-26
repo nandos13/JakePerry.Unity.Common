@@ -168,6 +168,9 @@ namespace JakePerry.Unity
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
+            // For reasons I can't comprehend, rect height is 2 pixels larger when drawing an array element
+            position.height = GetPropertyHeight(property, label);
+
             position = EditorGUI.PrefixLabel(position, label);
 
             using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
