@@ -8,10 +8,9 @@ namespace JakePerry.Unity
 {
     public static class ResourceGuidManifestEditorUtil
     {
-        const string kAssetsPath = Project.kGeneratedAssetsDir + ResourceGuidManifest.kResourcesPath + ".asset";
+        const string kAssetsPath = Project.kGeneratedAssetsDir + "Resources/" + ResourceGuidManifest.kResourcesPath + ".asset";
 
-        [MenuItem(Project.kContextMenuItemsPath + "Generate/Resources GUID Cache")]
-        public static void GenerateResourceGuidManifest()
+        internal static ResourceGuidManifest GetOrCreateManifestAsset()
         {
             var manifest = AssetDatabase.LoadAssetAtPath<ResourceGuidManifest>(kAssetsPath);
 
@@ -22,8 +21,16 @@ namespace JakePerry.Unity
 
                 manifest = ScriptableObject.CreateInstance<ResourceGuidManifest>();
                 AssetDatabase.CreateAsset(manifest, kAssetsPath);
+
+                EditorUtility.SetDirty(manifest);
             }
 
+            return manifest;
+        }
+
+        [MenuItem(Project.kContextMenuItemsPath + "Generate/Resources GUID Cache")]
+        public static void GenerateResourceGuidManifest()
+        {
             var pairs = new List<(SerializeGuid, string)>();
 
             foreach (var path in AssetDatabase.GetAllAssetPaths())
@@ -35,6 +42,7 @@ namespace JakePerry.Unity
                 }
             }
 
+            var manifest = GetOrCreateManifestAsset();
             manifest.Editor_SetCache(pairs);
 
             EditorUtility.SetDirty(manifest);

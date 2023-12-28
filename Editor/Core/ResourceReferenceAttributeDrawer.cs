@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -42,15 +43,30 @@ namespace JakePerry.Unity
             GUIUtility.systemCopyBuffer = assetPath;
         }
 
+        private static void AddToManifest(object o)
+        {
+            var guid = (SerializeGuid)o;
+            if (UnityEditorHelper.TryGetResourcesPath(guid, out string resourcePath))
+            {
+                var manifest = ResourceGuidManifestEditorUtil.GetOrCreateManifestAsset();
+
+                manifest.Editor_AddToCache(guid, resourcePath);
+
+                EditorUtility.SetDirty(manifest);
+                AssetDatabase.SaveAssetIfDirty(manifest);
+            }
+        }
+
         private void ShowContextMenu(SerializeGuid guid, SerializedProperty property)
         {
             bool gotAssetPath = UnityEditorHelper.TryGetAssetPath(guid, out string assetPath);
+            bool isResource = UnityEditorHelper.TryGetResourcesPath(assetPath, out string resourcePath);
 
             var menu = new GenericMenu();
 
             SerializeGuid.EditorUtil.AddCopyGuidCommand(menu, guid, "Copy Guid");
 
-            var copyResourcesFunc = gotAssetPath && UnityEditorHelper.IsResourcesPath(assetPath)
+            var copyResourcesFunc = gotAssetPath && isResource
                 ? (GenericMenu.MenuFunction2)CopyResourcesPath
                 : null;
             menu.AddItem(new GUIContent("Copy Resources-relative Path"), false, copyResourcesFunc, guid);
@@ -59,6 +75,18 @@ namespace JakePerry.Unity
                 ? (GenericMenu.MenuFunction2)CopyAssetsPath
                 : null;
             menu.AddItem(new GUIContent("Copy Assets-relative Path"), false, copyAssetsFunc, assetPath);
+
+            menu.AddSeparator(null);
+
+            bool isResouceButIsMissingFromManifest =
+                gotAssetPath &&
+                isResource &&
+                (!ResourceGuidManifest.Editor_TryGetResourcePathNoEditorFallback(guid, out string manifestPath) || !StringComparer.Ordinal.Equals(manifestPath, resourcePath));
+
+            var addToManifestFunc = isResouceButIsMissingFromManifest
+                ? (GenericMenu.MenuFunction2)AddToManifest
+                : null;
+            menu.AddItem(new GUIContent("Add to Resources manifest"), false, addToManifestFunc, guid);
 
             menu.AddSeparator(null);
 
@@ -106,9 +134,9 @@ namespace JakePerry.Unity
                     if (ShowErrorContent(ref position, err, warn: true))
                     {
                         Debug.LogError(
-                            "A GUID is assigned but the corresponding asset is an unexpected type. Click this log to ping the asset.\n" +
+                            "A GUID is assigned but the corresponding asset is an unexpected type.\n" +
                             $"- GUID: {guid.UnityGuidString}\n- Asset type: {AssetDatabase.GetMainAssetTypeAtPath(assetPath)}\n- Expected type: {resourceType}",
-                            asset);
+                            AssetDatabase.LoadAssetAtPath(assetPath, typeof(UnityEngine.Object)));
                     }
                 }
                 // Check the asset is in a Resources directory
@@ -118,14 +146,27 @@ namespace JakePerry.Unity
                     if (ShowErrorContent(ref position, err))
                     {
                         Debug.LogError(
-                            "A GUID is assigned but the corresponding asset is not part of a Resources directory. Click this log to ping the asset.\n" +
+                            "A GUID is assigned but the corresponding asset is not part of a Resources directory.\n" +
                             $"- GUID: {guid.UnityGuidString}\n- Asset path: {assetPath}",
-                            asset);
+                            AssetDatabase.LoadAssetAtPath(assetPath, resourceType));
                     }
                 }
                 else
                 {
                     asset = AssetDatabase.LoadAssetAtPath(assetPath, resourceType);
+
+                    // Check the asset is included in the manifest to be loadable
+                    if (!ResourceGuidManifest.Editor_TryGetResourcePathNoEditorFallback(guid, out _))
+                    {
+                        var err = "Asset is missing from Resources manifest.\nFor debug info, ctrl + shift + click.";
+                        if (ShowErrorContent(ref position, err, warn: true))
+                        {
+                            Debug.LogError(
+                                "The GUID corresponds to a Resources asset but the asset is not included in the Resources manifest. This will cause a failure in build.\n" +
+                                $"- GUID: {guid.UnityGuidString}\n- Asset path: {assetPath}",
+                                asset);
+                        }
+                    }
                 }
             }
 

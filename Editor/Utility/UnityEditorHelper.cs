@@ -249,16 +249,10 @@ namespace JakePerry.Unity
             return TryGetProjectAsset<UnityEngine.Object>(guid, out asset);
         }
 
+        /// <inheritdoc cref="ResourcesEx.IsResourcesPath(string)"/>
         public static bool IsResourcesPath(string path)
         {
-            const string kResourcesDir = "/Resources/";
-
-            if (string.IsNullOrEmpty(path))
-                return false;
-
-            var resourcesIndex = path.LastIndexOf(kResourcesDir);
-            return resourcesIndex > -1
-                && resourcesIndex < path.Length - kResourcesDir.Length;
+            return ResourcesEx.IsResourcesPath(path);
         }
 
         /// <summary>
@@ -278,35 +272,7 @@ namespace JakePerry.Unity
         /// </returns>
         public static bool TryGetResourcesPath(string path, out string resourcePath)
         {
-            const string kResourcesDir = "/Resources/";
-
-            resourcePath = string.Empty;
-
-            if (string.IsNullOrEmpty(path))
-                return false;
-
-            if (!string.IsNullOrEmpty(path))
-            {
-                // Find the Resources directory in the path
-                var resourcesIndex = path.LastIndexOf(kResourcesDir);
-                if (resourcesIndex > -1)
-                {
-                    var start = resourcesIndex + kResourcesDir.Length;
-                    var length = path.Length - start;
-
-                    // Remove file extension suffix (eg .prefab, .unity, etc)
-                    var lastSeparatorIndex = path.LastIndexOf('/');
-                    var lastPeriodIndex = path.LastIndexOf('.');
-
-                    if (lastPeriodIndex > lastSeparatorIndex)
-                        length -= (path.Length - lastPeriodIndex);
-
-                    resourcePath = path.Substring(start, length);
-                    return true;
-                }
-            }
-
-            return false;
+            return ResourcesEx.TryGetResourcesPath(path, out resourcePath);
         }
 
         /// <summary>
