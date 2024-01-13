@@ -141,11 +141,12 @@ namespace JakePerry.Unity
 
                 style.Draw(rect, content, id, active, hover);
             }
-            else if (evt.type == EventType.MouseDown)
+            else if (evt.type == EventType.MouseDown && evt.button == 0)
             {
                 if (GUI.enabled && rect.Contains(evt.mousePosition))
                 {
                     result = true;
+                    evt.Use();
                 }
             }
 
