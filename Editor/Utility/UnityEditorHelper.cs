@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
@@ -10,6 +11,10 @@ namespace JakePerry.Unity
     {
         public sealed class SerializedPropertyResolver
         {
+            // SerializedProperty's propertyPath represents arrays & lists like so...
+            // eg. "items.Array.data[3]" represents the 3rd element in an array/list named "items".
+            private const string kArrayExpression = "Array.data[";
+
             private readonly struct Capture
             {
                 public readonly ValueMemberInfo member;
@@ -25,6 +30,13 @@ namespace JakePerry.Unity
                     this.value = value;
                 }
             }
+
+            /// <summary>
+            /// Cache containing the <see cref="ValueMemberInfo"/> resolved from a given
+            /// declaring type &amp; member name. Implemented for performance.
+            /// </summary>
+            private static readonly Dictionary<(Type, string), ValueMemberInfo> _memberCache = new();
+            private static readonly List<(int offset, int count)> _spans = new();
 
             private readonly SerializedObject m_rootObj;
             private readonly string m_propertyPath;
@@ -44,6 +56,9 @@ namespace JakePerry.Unity
                 const MemberTypes kMemberFlags = MemberTypes.Field | MemberTypes.Property;
                 const BindingFlags kBindingFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
                 const BindingFlags kBaseTypeBindingFlags = BindingFlags.NonPublic | BindingFlags.Instance;
+
+                if (_memberCache.TryGetValue((type, memberName), out ValueMemberInfo cached))
+                    return cached;
 
                 var originalType = type;
 
@@ -72,89 +87,133 @@ namespace JakePerry.Unity
                     throw new NotImplementedException("More than one member was found. This code will require some changes to discern the correct member.");
                 }
 
-                return ValueMemberInfo.FromMemberInfo(members[0]);
+                var m = ValueMemberInfo.FromMemberInfo(members[0]);
+                _memberCache[(originalType, memberName)] = m;
+
+                return m;
+            }
+
+            /// <summary>
+            /// Split a string returned by <see cref="SerializedProperty.propertyPath"/> into
+            /// substrings representing each individual member name.
+            /// </summary>
+            /// <param name="path">Full path for a serialized property.</param>
+            /// <param name="spans">Output list receiving segment offset and count info.</param>
+            private static void GetRelativePathSplits(string path, List<(int, int)> spans)
+            {
+                int lastPeriodIndex = -1;
+
+                while (true)
+                {
+                    int segmentOffset = lastPeriodIndex + 1;
+
+                    // If the current member in the path matches the expression for an array/list,
+                    // skip the period character included in the array expression.
+                    int nextPeriodIndex;
+                    if (path.Length >= segmentOffset + kArrayExpression.Length &&
+                        path.IndexOf(kArrayExpression, segmentOffset, kArrayExpression.Length) == segmentOffset)
+                    {
+                        nextPeriodIndex = path.IndexOf('.', segmentOffset + kArrayExpression.Length);
+                    }
+                    // Otherwise, the current member name is simply delimeted by the next period character.
+                    else
+                    {
+                        nextPeriodIndex = path.IndexOf('.', segmentOffset);
+                    }
+
+                    int segmentCount = (nextPeriodIndex < 0 ? path.Length : nextPeriodIndex) - segmentOffset;
+                    if (segmentCount > 0)
+                    {
+                        spans.Add((segmentOffset, segmentCount));
+                    }
+
+                    if (nextPeriodIndex < 0)
+                    {
+                        break;
+                    }
+
+                    lastPeriodIndex = nextPeriodIndex;
+                }
             }
 
             private Stack<Capture> ResolveStack(string path)
             {
-                // Unity's property path breaks array/list elements down weirdly, it's easier to deal with if we combine them.
-                path = path.Replace(".Array.data[", ".__Array[");
-
-                // This property may be nested several classes/structs deep. In this case,
-                // the string returned by 'propertyPath' will split each respective member name
-                // via the period character.
-                var relativePath = path.IndexOf('.') > -1
-                    ? path.Split(new char[] { '.' })
-                    : new string[1] { path };
-
                 var stack = new Stack<Capture>();
 
-                object nextTarget = m_rootObj.targetObject;
-                var declaringType = nextTarget.GetType();
-
-                // Iterate all segments except the last
-                for (int i = 0; i < relativePath.Length; i++)
+                try
                 {
-                    var target = nextTarget;
+                    var segments = _spans;
+                    GetRelativePathSplits(path, segments);
 
-                    var memberName = relativePath[i];
+                    object nextTarget = m_rootObj.targetObject;
+                    var declaringType = nextTarget.GetType();
 
-                    // Special case: Handle cases where we're attempting to access items in an array or List<T>
-                    if (memberName.StartsWith("__Array["))
+                    for (int i = 0; i < segments.Count; i++)
                     {
-                        Debug.Assert(i > 0);
+                        (int segmentOffset, int segmentCount) = segments[i];
 
-                        var numberStr = memberName.Substring(8, memberName.Length - 9);
-                        var index = int.Parse(numberStr);
+                        var target = nextTarget;
 
-                        var lastCapture = stack.Peek();
+                        var memberName = path.Substring(segmentOffset, segmentCount);
 
-                        Type elementType;
-
-                        if (declaringType.IsGenericType && declaringType.GetGenericTypeDefinition() == typeof(List<>))
+                        // Special case: Handle cases where we're attempting to access items in an array or List<T>
+                        if (memberName.StartsWith(kArrayExpression, StringComparison.Ordinal))
                         {
-                            var itemsMember = GetMemberFromType(declaringType, "_items");
-                            var listObj = lastCapture.value;
-                            var listInternalArray = itemsMember.GetValue(listObj);
+                            Debug.Assert(i > 0);
 
-                            stack.Push(new Capture(itemsMember, listObj, listInternalArray));
-                            lastCapture = stack.Peek();
+                            var numberStr = memberName.AsSpan(kArrayExpression.Length, memberName.Length - 1 - kArrayExpression.Length);
+                            var index = int.Parse(numberStr, style: NumberStyles.Integer);
 
-                            elementType = listObj.GetType().GetGenericArguments()[0];
+                            var lastCapture = stack.Peek();
+
+                            Type elementType;
+
+                            if (declaringType.IsGenericType && declaringType.GetGenericTypeDefinition() == typeof(List<>))
+                            {
+                                var itemsMember = GetMemberFromType(declaringType, "_items");
+                                var listObj = lastCapture.value;
+                                var listInternalArray = itemsMember.GetValue(listObj);
+
+                                stack.Push(new Capture(itemsMember, listObj, listInternalArray));
+                                lastCapture = stack.Peek();
+
+                                elementType = listObj.GetType().GetGenericArguments()[0];
+                            }
+                            else if (declaringType.IsArray)
+                            {
+                                if (declaringType == typeof(Array))
+                                    throw new NotImplementedException("The Array class itself is not supported yet. Will require a refactor to use a MemberInfo instead of a field/property so that we can correctly set the value (Array does not provide an indexer property).");
+
+                                elementType = declaringType.GetElementType();
+                            }
+                            else
+                            {
+                                // Should never happen, but needs further investigation if it does later.
+                                throw new NotImplementedException($"Failed to resolve declaring type!");
+                            }
+
+                            var array = (Array)lastCapture.value;
+                            var element = array.GetValue(index);
+
+                            stack.Push(new Capture(default, array, element, propertyIndex: index));
+
+                            declaringType = elementType;
+                            nextTarget = element;
                         }
-                        else if (declaringType.IsArray)
-                        {
-                            if (declaringType == typeof(Array))
-                                throw new NotImplementedException("The Array class itself is not supported yet. Will require a refactor to use a MemberInfo instead of a field/property so that we can correctly set the value (Array does not provide an indexer property).");
-
-                            elementType = declaringType.GetElementType();
-                        }
+                        // Handle regular members
                         else
                         {
-                            // Should never happen, but needs further investigation if it does later.
-                            throw new NotImplementedException($"Failed to resolve declaring type!");
+                            var member = GetMemberFromType(declaringType, memberName);
+                            var value = member.GetValue(target);
+
+                            stack.Push(new Capture(member, target, value));
+
+                            declaringType = member.MemberType;
+                            nextTarget = value;
                         }
-
-                        var array = (Array)lastCapture.value;
-                        var element = array.GetValue(index);
-
-                        stack.Push(new Capture(default, array, element, propertyIndex: index));
-
-                        declaringType = elementType;
-                        nextTarget = element;
-                    }
-                    // Handle regular members
-                    else
-                    {
-                        var member = GetMemberFromType(declaringType, memberName);
-                        var value = member.GetValue(target);
-
-                        stack.Push(new Capture(member, target, value));
-
-                        declaringType = member.MemberType;
-                        nextTarget = value;
                     }
                 }
+                finally { _spans.Clear(); }
 
                 return stack;
             }
