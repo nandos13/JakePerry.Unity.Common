@@ -13,7 +13,6 @@ namespace JakePerry.Unity
         /// </summary>
         public static class ObjectSelector
         {
-            private static Type _objectSelectorType;
             private static PropertyInfo _objectSelectorGetProperty;
             private static FieldInfo _objectSelectorIDProperty;
 
@@ -22,8 +21,7 @@ namespace JakePerry.Unity
             private static string _objSelCmdCanceled;
             private static string _objSelCmdSelectionDone;
 
-            private static Type ObjectSelectorType
-                => (_objectSelectorType ??= typeof(EditorWindow).Assembly.GetType("UnityEditor.ObjectSelector"));
+            private static Type ObjectSelectorType => UnityInternalsHelper.GetType(typeof(EditorWindow).Assembly, "UnityEditor.ObjectSelector");
 
             private static object ObjectSelectorInst
                 => (_objectSelectorGetProperty ??= ObjectSelectorType.GetProperty("get", (BindingFlags)0x18)).GetValue(null);
