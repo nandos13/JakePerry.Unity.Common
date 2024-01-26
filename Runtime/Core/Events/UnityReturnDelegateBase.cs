@@ -9,7 +9,7 @@ namespace JakePerry.Unity.Events
     /// Abstract base class for UnityReturnDelegates.
     /// </summary>
     [Serializable]
-    public abstract class UnityReturnDelegateBase<TResult>
+    public abstract class UnityReturnDelegateBase<TResult> : ISerializationCallbackReceiver
     {
         //UnityEngine.Events.UnityEvent;
         //UnityEngine.Events.UnityEvent<int>;
@@ -34,9 +34,7 @@ namespace JakePerry.Unity.Events
             return !string.IsNullOrEmpty(m_targetAssemblyTypeName) && !string.IsNullOrEmpty(m_methodName);
         }
 
-        protected abstract MethodInfo FindMethod_Impl(string name, Type targetObjType);
-
-        protected static MethodInfo GetValidMethodInfo(Type objectType, string methodName, Type[] argTypes)
+        private static MethodInfo GetValidMethodInfo(Type objectType, string methodName, Type[] argTypes)
         {
             var flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
 
@@ -45,39 +43,91 @@ namespace JakePerry.Unity.Events
                 var method = objectType.GetMethod(methodName, flags, null, argTypes, null);
                 if (method is not null)
                 {
-                    //var parameters = method.GetParameters();
-                    //foreach (var param in parameters)
-                    //{
-                    //
-                    //}
+                    // TODO: Investigate this code...
+                    // We know that the parameter types should match because they're passed into the
+                    // GetMethod call above. For some reason Unity checks the IsPrimitive property
+                    // and potentially skips the method if they don't match. Perhaps this has something
+                    // to do with method hiding, or private methods with the same signature declared
+                    // on a base + child chass?
+                    // 
+                    // IsPrimitive documentation states...
+                    // If the current Type represents a generic type, or a type parameter in the definition
+                    // of a generic type or generic method, this property always returns false.
+                    // 
+                    // I was unable to replicate this in a quick Linqpad test, so I may be
+                    // interpreting it wrong. More testing required...
+                    var parameters = method.GetParameters();
+                    int num = 0;
+                    foreach (var param in parameters)
+                    {
+                        if (argTypes[num].IsPrimitive != param.ParameterType.IsPrimitive)
+                        {
+                            goto AFTER_CHECK_METHOD;
+                        }
+                    }
+                    // ---
 
                     return method;
                 }
+
+                AFTER_CHECK_METHOD:
 
                 objectType = objectType.BaseType;
                 flags &= ~(BindingFlags.Public);
             }
 
-            throw new NotImplementedException();
+            return null;
+        }
+
+        protected abstract void DirtyRuntimeCall();
+
+        protected abstract Type[] GetEventDefinedInvocationArgTypes();
+
+        private Type[] GetInvocationArgTypes()
+        {
+            var mode = m_mode;
+
+            if (mode == PersistentListenerMode.Object)
+            {
+                var objArgAssemblyTypeName = m_arguments.ObjectArgAssemblyTypeName;
+                if (!string.IsNullOrEmpty(objArgAssemblyTypeName))
+                {
+                    var type2 = Type.GetType(objArgAssemblyTypeName, throwOnError: false);
+                    if (type2 is not null)
+                    {
+                        return new Type[1] { type2 };
+                    }
+                }
+
+                return new Type[1] { typeof(UnityEngine.Object) };
+            }
+
+            return mode switch
+            {
+                PersistentListenerMode.EventDefined => GetEventDefinedInvocationArgTypes(),
+                PersistentListenerMode.Void => Array.Empty<Type>(),
+                // TODO: Cache these
+                PersistentListenerMode.Float => new Type[1] { typeof(float) },
+                PersistentListenerMode.Int => new Type[1] { typeof(int) },
+                PersistentListenerMode.Bool => new Type[1] { typeof(bool) },
+                PersistentListenerMode.String => new Type[1] { typeof(string) },
+                _ => null,
+            };
+        }
+
+        private MethodInfo FindMethod(Type targetType)
+        {
+            var argTypes = GetInvocationArgTypes();
+            return GetValidMethodInfo(targetType, m_methodName, argTypes);
         }
 
         private MethodInfo FindMethod()
         {
-            // TODO: Actually go over this and figure out why it's grabbing the type of the UnityEngine.Object argument...
-
-            var argumentType = typeof(UnityEngine.Object);
-            var objArgAssemblyTypeName = m_arguments.ObjectArgAssemblyTypeName;
-            if (!string.IsNullOrEmpty(objArgAssemblyTypeName))
-            {
-                var type2 = Type.GetType(objArgAssemblyTypeName, throwOnError: false);
-                if (type2 is not null) argumentType = type2;
-            }
-
             var targetType = m_target != null
                 ? m_target.GetType()
                 : Type.GetType(m_targetAssemblyTypeName, throwOnError: false);
 
-            return FindMethod(m_methodName, targetType, m_mode, argumentType);
+            return FindMethod(targetType);
         }
 
         /*
@@ -135,105 +185,9 @@ namespace JakePerry.Unity.Events
         {
             return m_methodName;
         }
-    }
 
-    // TODO: Move doc
-    // TODO: Documentation
-    internal abstract class BaseInvokableCallWithReturn<TFunc>
-        where TFunc : Delegate
-    {
-        private readonly TFunc m_func;
+        void ISerializationCallbackReceiver.OnBeforeSerialize() => DirtyRuntimeCall();
 
-        protected TFunc Func => m_func;
-
-        protected bool AllowInvoke
-        {
-            get
-            {
-                var target = m_func.Target;
-
-                if (target is UnityEngine.Object obj)
-                {
-                    return obj != null;
-                }
-
-                return true;
-            }
-        }
-
-        protected BaseInvokableCallWithReturn(object target, MethodInfo method)
-        {
-            _ = method ?? throw new ArgumentNullException(nameof(method));
-
-            if (method.IsStatic)
-            {
-                if (target is not null)
-                {
-                    throw new ArgumentException("Static method specified, target must be null.", nameof(target));
-                }
-            }
-            else
-            {
-                _ = target ?? throw new ArgumentNullException(nameof(target));
-            }
-
-            m_func = (TFunc)Delegate.CreateDelegate(typeof(TFunc), target, method);
-        }
-
-        internal bool Match(object target, MethodInfo method)
-        {
-            var func = m_func;
-            return func.Target == target && func.Method.Equals(method);
-        }
-    }
-
-    internal sealed class InvokableCallWithReturn<TResult> : BaseInvokableCallWithReturn<UnityFunc<TResult>>
-    {
-        internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
-
-        internal void Invoke()
-        {
-            if (AllowInvoke) Func.Invoke();
-        }
-    }
-
-    internal sealed class InvokableCallWithReturn<T0, TResult> : BaseInvokableCallWithReturn<UnityFunc<T0, TResult>>
-    {
-        internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
-
-        internal void Invoke(T0 arg0)
-        {
-            if (AllowInvoke) Func.Invoke(arg0);
-        }
-    }
-
-    internal sealed class InvokableCallWithReturn<T0, T1, TResult> : BaseInvokableCallWithReturn<UnityFunc<T0, T1, TResult>>
-    {
-        internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
-
-        internal void Invoke(T0 arg0, T1 arg1)
-        {
-            if (AllowInvoke) Func.Invoke(arg0, arg1);
-        }
-    }
-
-    internal sealed class InvokableCallWithReturn<T0, T1, T2, TResult> : BaseInvokableCallWithReturn<UnityFunc<T0, T1, T2, TResult>>
-    {
-        internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
-
-        internal void Invoke(T0 arg0, T1 arg1, T2 arg2)
-        {
-            if (AllowInvoke) Func.Invoke(arg0, arg1, arg2);
-        }
-    }
-
-    internal sealed class InvokableCallWithReturn<T0, T1, T2, T3, TResult> : BaseInvokableCallWithReturn<UnityFunc<T0, T1, T2, T3, TResult>>
-    {
-        internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
-
-        internal void Invoke(T0 arg0, T1 arg1, T2 arg2, T3 arg3)
-        {
-            if (AllowInvoke) Func.Invoke(arg0, arg1, arg2, arg3);
-        }
+        void ISerializationCallbackReceiver.OnAfterDeserialize() => DirtyRuntimeCall();
     }
 }

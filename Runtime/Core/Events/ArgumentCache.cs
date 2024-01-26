@@ -5,7 +5,7 @@ namespace JakePerry.Unity.Events
 {
     /// <summary>
     /// Implementation matching Unity's internal class of the same name.
-    /// This object contains an invocation argument for the <see cref="UnityReturnDelegate"/> system.
+    /// This object contains an invocation argument for the UnityReturnDelegate system.
     /// </summary>
     [Serializable]
     internal sealed class ArgumentCache : ISerializationCallbackReceiver
