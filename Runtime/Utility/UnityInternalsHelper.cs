@@ -29,7 +29,7 @@ namespace JakePerry.Unity
             public readonly BindingFlags flags;
             public readonly Binder binder;
             public readonly CallingConventions callConventions;
-            public readonly Type[] types;
+            public readonly ParamsArray<Type> types;
             public readonly ParameterModifier[] modifiers;
 
             public MethodKey(
@@ -38,7 +38,7 @@ namespace JakePerry.Unity
                 BindingFlags flags,
                 Binder binder = null,
                 CallingConventions callConventions = default,
-                Type[] types = null,
+                ParamsArray<Type> types = default,
                 ParameterModifier[] modifiers = null)
             {
                 this.type = type;
@@ -46,7 +46,7 @@ namespace JakePerry.Unity
                 this.flags = flags;
                 this.binder = binder;
                 this.callConventions = callConventions;
-                this.types = types ?? Array.Empty<Type>();
+                this.types = types;
                 this.modifiers = modifiers ?? Array.Empty<ParameterModifier>();
             }
         }
@@ -88,17 +88,26 @@ namespace JakePerry.Unity
 
         // TODO: GetField/GetProperty
 
-        internal static MethodInfo GetMethod(Type type, string methodName, BindingFlags flags)
+        internal static MethodInfo GetMethod(Type type, string methodName, BindingFlags flags, ParamsArray<Type> types = default)
         {
             _ = type ?? throw new ArgumentNullException(nameof(type));
             _ = methodName ?? throw new ArgumentNullException(nameof(methodName));
 
             if (methodName.Length == 0) throw new ArgumentException("Empty string.", nameof(methodName));
 
-            var key = new MethodKey(type, methodName, flags);
+            // TODO: Determine if the flags actually needs to be part of the key.
+            var key = new MethodKey(type, methodName, flags, types: types);
             if (!_methodLookup.TryGetValue(key, out MethodInfo method))
             {
-                method = type.GetMethod(methodName, flags, binder: null, callConvention: default, types: null, modifiers: null);
+                var typesArray = types.ToArray();
+
+                method = type.GetMethod(
+                    name: methodName,
+                    bindingAttr: flags,
+                    binder: null,
+                    callConvention: default,
+                    types: typesArray,
+                    modifiers: null);
 
                 if (method is null)
                 {
