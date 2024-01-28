@@ -30,6 +30,9 @@ namespace JakePerry.Unity.Events
         [SerializeReference]
         private InvocationArgument[] m_arguments;
 
+        [SerializeField]
+        private byte m_policy;
+
         private bool m_dirty = true;
         private RuntimeInvocableCall m_call;
 
@@ -43,12 +46,35 @@ namespace JakePerry.Unity.Events
             }
         }
 
+        protected abstract Type ReturnType { get; }
+
+        /// <summary>
+        /// Indicates the error handling policy that should be enacted when the invocation
+        /// target is a destroyed <see cref="UnityEngine.Object"/>.
+        /// </summary>
+        public TargetDestroyedErrorHandlingPolicy Policy
+        {
+            get => (TargetDestroyedErrorHandlingPolicy)m_policy;
+            set
+            {
+                if (value < TargetDestroyedErrorHandlingPolicy.Default ||
+                    value > TargetDestroyedErrorHandlingPolicy.ThrowException)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value));
+                }
+
+                m_policy = (byte)(int)value;
+            }
+        }
+
         protected abstract Type[] GetEventDefinedInvocationArgumentTypes();
         internal abstract RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method);
 
-        private static MethodInfo GetValidMethodInfo(Type objectType, string methodName, Type[] argTypes)
+        private static MethodInfo GetValidMethodInfo(Type objectType, string methodName, Type returnType, Type[] argTypes)
         {
             var flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+
+            MethodInfo matchWithIncorrectReturn = null;
 
             while (objectType != typeof(object) && objectType != null)
             {
@@ -66,8 +92,15 @@ namespace JakePerry.Unity.Events
                     // If the current Type represents a generic type, or a type parameter in the definition
                     // of a generic type or generic method, this property always returns false.
                     // 
-                    // I was unable to replicate this in a quick Linqpad test, so I may be
-                    // interpreting it wrong. More testing required...
+                    // According to this link: https://stackoverflow.com/a/61888753
+                    // This refers "to a Type object whose IsGenericParameter property is true",
+                    // so it would only apply if objectType was a generic type definition (ie. typeof(List<>)),
+                    // which is clearly an invalid use case.
+                    // 
+                    // I need to investigate further and see if there are more unexpected circumstances
+                    // in which this check actually does anything useful. Otherwise it's entirely possible
+                    // it came from an early iteration of Unity's UnityEvent code and it was never removed
+                    // because other programmers were just as confused as I am...
                     var parameters = method.GetParameters();
                     int num = 0;
                     foreach (var param in parameters)
@@ -79,7 +112,24 @@ namespace JakePerry.Unity.Events
                     }
                     // ---
 
-                    // TODO: WE NEED TO ACTUALLY VALIDATE THE RETURN TYPE HERE! THIS ISNT DONE BY UNITY BECAUSE THEY ONLY USE VOID METHODS
+                    /* Note:
+                     * There is no way to pass the expected return type to the Type.GetMethod call. We also want to support
+                     * methods which have a more derived return type.
+                     * If the return type is incompatible, simply pretend we didn't see it. This may occur for one of
+                     * the following reasons:
+                     * - The target method's signature changed since this delegate was serialized (in which case,
+                     *   ignoring it is the correct behaviour).
+                     * or
+                     * - The target method is declared by a base type and will be found in a subsequent loop iteration.
+                     *   The current method is either hiding the base method (via the 'new' keyword), or both the current
+                     *   and target method are private.
+                     */
+                    if (returnType.IsAssignableFrom(method.ReturnType))
+                    {
+                        matchWithIncorrectReturn = method;
+                        goto AFTER_CHECK_METHOD;
+                    }
+
                     return method;
                 }
 
@@ -87,6 +137,15 @@ namespace JakePerry.Unity.Events
 
                 objectType = objectType.BaseType;
                 flags &= ~(BindingFlags.Public);
+            }
+
+            if (matchWithIncorrectReturn is not null)
+            {
+                if (ReturnDelegatesConfig.ErrorLoggingEnabled)
+                {
+                    // TODO: Log an error stating that a method was found but return type was incorrect. Likely a signature change since serialization.
+                    ReturnDelegatesUtility.LogError("");
+                }
             }
 
             return null;
@@ -126,6 +185,34 @@ namespace JakePerry.Unity.Events
             return result;
         }
 
+        /// <summary>
+        /// Checks if invocation is allowed &amp; handles logging an error or throwing an exception
+        /// in accordance with the current error handling policy when it is not allowed..
+        /// </summary>
+        private static bool VerifyInvokeIsAllowed(RuntimeInvocableCall call, TargetDestroyedErrorHandlingPolicy policy)
+        {
+            bool allowed = call.AllowInvoke;
+            if (!allowed)
+            {
+                if (policy == TargetDestroyedErrorHandlingPolicy.Default)
+                {
+                    policy = ReturnDelegatesConfig.TargetDestroyedPolicy;
+                }
+
+                // TODO: Augment error & exception with some useful data. Call site, target object id, method name perhaps...
+                if (policy == TargetDestroyedErrorHandlingPolicy.LogError)
+                {
+                    ReturnDelegatesUtility.LogError("Target object is destroyed! Invocation will not proceed & a default value will be returned.");
+                }
+                else if (policy == TargetDestroyedErrorHandlingPolicy.ThrowException)
+                {
+                    throw new InvocationTargetDestroyedException();
+                }
+            }
+
+            return allowed;
+        }
+
         private void DirtyRuntimeCall()
         {
             m_call = null;
@@ -138,10 +225,11 @@ namespace JakePerry.Unity.Events
                 ? GetEventDefinedInvocationArgumentTypes()
                 : GetCachedInvocationArgumentTypes(m_arguments);
 
-            return GetValidMethodInfo(targetType, m_methodName, argTypes);
+            var returnType = ReturnType;
+            return GetValidMethodInfo(targetType, m_methodName, returnType, argTypes);
         }
 
-        internal RuntimeInvocableCall PrepareInvoke()
+        private void ResolveRuntimeCallIfDirty()
         {
             if (m_dirty)
             {
@@ -157,7 +245,6 @@ namespace JakePerry.Unity.Events
 
                             if (m_argumentsDefinedByEvent)
                             {
-                                // TODO: Need to pass the invocation target and method to child impl.
                                 m_call = ConstructDelegateCall(target, method);
                             }
                             else
@@ -171,8 +258,32 @@ namespace JakePerry.Unity.Events
 
                 m_dirty = false;
             }
+        }
 
-            return m_call;
+        /// <summary>
+        /// Performs the necessary reflection logic to resolve the runtime invocable call &amp;
+        /// checks that the call is valid.
+        /// </summary>
+        /// <returns>
+        /// The <see cref="RuntimeInvocableCall"/> instance that should be invoked by the derived class,
+        /// if one is available and valid; Otherwise, returns <see langword="null"/>.
+        /// </returns>
+        internal RuntimeInvocableCall PrepareInvoke()
+        {
+            ResolveRuntimeCallIfDirty();
+
+            var call = m_call;
+
+            if (call is not null)
+            {
+                var policy = this.Policy;
+                if (!VerifyInvokeIsAllowed(call, policy))
+                {
+                    call = null;
+                }
+            }
+
+            return call;
         }
 
         void ISerializationCallbackReceiver.OnBeforeSerialize() => DirtyRuntimeCall();

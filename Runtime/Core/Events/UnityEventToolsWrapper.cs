@@ -4,7 +4,9 @@ using UnityEngine.Events;
 
 namespace JakePerry.Unity.Events
 {
-    // TODO: Documentation
+    /// <summary>
+    /// Wraps the internal UnityEngine.UnityEventTools class. Used to tidy type name strings.
+    /// </summary>
     internal static class UnityEventToolsWrapper
     {
         private static Type Type_UnityEventTools => UnityInternalsHelper.GetType(typeof(UnityEvent).Assembly, "UnityEngine.Events.UnityEventTools");

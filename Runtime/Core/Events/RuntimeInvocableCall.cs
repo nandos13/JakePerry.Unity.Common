@@ -8,11 +8,16 @@ namespace JakePerry.Unity.Events
         private readonly MethodInfo m_method;
         private readonly object m_target;
 
-        protected bool AllowInvoke
+        /// <summary>
+        /// Indicates whether this call is allowed to be invoked.
+        /// <para>
+        /// Invocation is not allowed if the target is a destroyed <see cref="UnityEngine.Object"/>.
+        /// </para>
+        /// </summary>
+        internal bool AllowInvoke
         {
             get
             {
-                // TODO: This doesnt account for static methods, which I'd like to support...
                 if (m_target is UnityEngine.Object obj)
                 {
                     return obj != null;

@@ -8,6 +8,8 @@ namespace JakePerry.Unity.Events
     [Serializable]
     public class UnityReturnDelegate<TResult> : UnityReturnDelegateBase
     {
+        protected sealed override Type ReturnType => typeof(TResult);
+
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
             return new InvokableCallWithReturn<TResult>(target, method);
@@ -40,6 +42,8 @@ namespace JakePerry.Unity.Events
     public class UnityReturnDelegate<T0, TResult> : UnityReturnDelegateBase
     {
         private static readonly Stack<object[]> _argsPool = new();
+
+        protected sealed override Type ReturnType => typeof(TResult);
 
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
@@ -81,6 +85,8 @@ namespace JakePerry.Unity.Events
     public class UnityReturnDelegate<T0, T1, TResult> : UnityReturnDelegateBase
     {
         private static readonly Stack<object[]> _argsPool = new();
+
+        protected sealed override Type ReturnType => typeof(TResult);
 
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
@@ -124,6 +130,8 @@ namespace JakePerry.Unity.Events
     {
         private static readonly Stack<object[]> _argsPool = new();
 
+        protected sealed override Type ReturnType => typeof(TResult);
+
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
             return new InvokableCallWithReturn<T0, T1, T2, TResult>(target, method);
@@ -166,6 +174,8 @@ namespace JakePerry.Unity.Events
     public class UnityReturnDelegate<T0, T1, T2, T3, TResult> : UnityReturnDelegateBase
     {
         private static readonly Stack<object[]> _argsPool = new();
+
+        protected sealed override Type ReturnType => typeof(TResult);
 
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
