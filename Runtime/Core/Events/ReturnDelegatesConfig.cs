@@ -2,51 +2,19 @@ using UnityEngine;
 
 namespace JakePerry.Unity.Events
 {
-    internal static class ReturnDelegatesConfig
+    [RuntimeSettingsPath("Project/JakePerry/Return Delegates")]
+    internal sealed class ReturnDelegatesConfig : RuntimeSettingsBase
     {
-        private const string kErrorLoggingEnabledPrefsKey = "JakePerry.Unity.Events.ReturnDelegates.ErrorLoggingEnabled";
+        [SerializeField]
+        private bool m_errorLoggingEnabled;
 
-#if UNITYRETURNDELEGATES_DISABLE_ERROR_LOGGING
-        private const bool kLoggingEnabled = false;
-#else
-        private const bool kLoggingEnabled = true;
-#endif
+        [SerializeField]
+        private TargetDestroyedErrorHandlingPolicy m_targetDestroyedPolicy;
 
-        internal static bool ErrorLoggingEnabled
-        {
-            get
-            {
-#if UNITY_EDITOR
-                return IsErrorLoggingEnabledInEditor();
-#else
-                return kLoggingEnabled;
-#endif
-            }
-        }
+        private static ReturnDelegatesConfig Cfg => GetSettingsAndCache<ReturnDelegatesConfig>();
 
-        internal static TargetDestroyedErrorHandlingPolicy TargetDestroyedPolicy
-        {
-            get
-            {
-                // TODO:
-                // Implement this, might need a generated ScriptableObject.
-                // Also might need to have the ErrorLoggingEnabled bool in said config object too.
-                // Just use a resource load for it I guess...
-                return TargetDestroyedErrorHandlingPolicy.Default;
-            }
-        }
+        internal static bool ErrorLoggingEnabled => Cfg.m_errorLoggingEnabled;
 
-#if UNITY_EDITOR
-        internal static bool IsErrorLoggingEnabledInEditor()
-        {
-            return UnityEditor.EditorPrefs.GetBool(kErrorLoggingEnabledPrefsKey, true);
-        }
-
-        internal static void SetErrorLoggingEnabledInEditor(bool enabled)
-        {
-            UnityEditor.EditorPrefs.SetBool(kErrorLoggingEnabledPrefsKey, enabled);
-            ReturnDelegatesUtility.Log(enabled ? "Error logging enabled in Editor" : "Error logging disabled in Editor");
-        }
-#endif
+        internal static TargetDestroyedErrorHandlingPolicy TargetDestroyedPolicy => Cfg.m_targetDestroyedPolicy;
     }
 }

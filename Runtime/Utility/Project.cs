@@ -1,9 +1,11 @@
+#if UNITY_EDITOR
+
 using UnityEngine;
 
 namespace JakePerry.Unity
 {
     /// <summary>
-    /// Defines some meta values for the project.
+    /// Editor-only class defining some meta values for the project.
     /// </summary>
     public static class Project
     {
@@ -11,9 +13,8 @@ namespace JakePerry.Unity
         public const string kGeneratedAssetsDir = "Assets/Generated/JakePerry/";
 
         /// <summary>
-        /// Get the path on disk to the project. This is equal to
-        /// <see cref="Application.dataPath"/> without the
-        /// final "/Assets" directory .
+        /// Get the path on disk to the project. This is equal to <see cref="Application.dataPath"/>
+        /// without the final "/Assets" directory.
         /// </summary>
         public static string GetProjectPath()
         {
@@ -23,3 +24,5 @@ namespace JakePerry.Unity
         }
     }
 }
+
+#endif

@@ -17,7 +17,7 @@ namespace JakePerry.Unity
             if (manifest == null)
             {
                 var manifestPathOnDisk = Path.Combine(Project.GetProjectPath(), kAssetsPath);
-                Directory.CreateDirectory(manifestPathOnDisk);
+                new FileInfo(manifestPathOnDisk).Directory.Create();
 
                 manifest = ScriptableObject.CreateInstance<ResourceGuidManifest>();
                 AssetDatabase.CreateAsset(manifest, kAssetsPath);
