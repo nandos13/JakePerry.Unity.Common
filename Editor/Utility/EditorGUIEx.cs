@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -7,6 +8,8 @@ namespace JakePerry.Unity
 {
     public static partial class EditorGUIEx
     {
+        private static readonly int kOptionsControlHint = "ThreeDotMenuOptionsControl".GetHashCode();
+
         private sealed class GuiEnabledScope : IDisposable
         {
             private static readonly Stack<bool> _restoreStates = new Stack<bool>();
@@ -35,6 +38,9 @@ namespace JakePerry.Unity
 
             public void Dispose() => Pop();
         }
+
+        public static GUIContent MixedValueContent =>
+            (GUIContent)UnityInternalsHelper.GetProperty(typeof(EditorGUI), "mixedValueContent", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
 
         public static IDisposable DisabledBlock => GuiEnabledScope.Push(false);
 
@@ -200,7 +206,7 @@ namespace JakePerry.Unity
                 var id = GUIUtility.GetControlID(kOptionsControlHint, FocusType.Keyboard, position);
 
                 var icon = EditorGUIUtility.IconContent("_Menu@2x");
-                if (CustomGuiButton(position, id, GetStyle("m_IconButton"), icon))
+                if (CustomGuiButton(position, id, Styles.GetStyle("m_IconButton"), icon))
                 {
                     result = true;
                 }

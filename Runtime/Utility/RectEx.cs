@@ -17,6 +17,15 @@ namespace JakePerry.Unity
                 r.height - padding2);
         }
 
+        public static Rect Pad(this Rect r, float left= 0f, float right = 0f, float top = 0f, float bottom = 0f)
+        {
+            return new Rect(
+                r.x + left,
+                r.y + top,
+                r.width - (left + right),
+                r.height - (top + bottom));
+        }
+
         public static Rect PadLeft(this Rect r, float padding)
         {
             return new Rect(r.x + padding, r.y, r.width - padding, r.height);
@@ -35,6 +44,16 @@ namespace JakePerry.Unity
         public static Rect PadBottom(this Rect r, float padding)
         {
             return new Rect(r.x, r.y, r.width, r.height - padding);
+        }
+
+        public static Rect OffsetX(this Rect r, float offset)
+        {
+            return new Rect(r.x + offset, r.y, r.width, r.height);
+        }
+
+        public static Rect OffsetY(this Rect r, float offset)
+        {
+            return new Rect(r.x, r.y + offset, r.width, r.height);
         }
 
         public static Rect WithWidth(this Rect r, float width)

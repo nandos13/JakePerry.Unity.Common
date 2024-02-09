@@ -75,8 +75,7 @@ namespace JakePerry.Unity
         {
             if (!_dirty) return;
 
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            UnityEngine.Profiling.Profiler.BeginSample("### Build cache");
+            UnityEngine.Profiling.Profiler.BeginSample("NamespaceCache Build");
 
             var dict = new Dictionary<string, List<NamespaceData>>(StringComparer.Ordinal);
 
@@ -150,8 +149,6 @@ namespace JakePerry.Unity
 
             // TODO: Remove this after some optimization
             UnityEngine.Profiling.Profiler.EndSample();
-            sw.Stop();
-            UnityEngine.Debug.LogError($"Built namespace cache in {sw.Elapsed.TotalMilliseconds}ms");
         }
 
         public static Namespace GetGlobalNamespace()

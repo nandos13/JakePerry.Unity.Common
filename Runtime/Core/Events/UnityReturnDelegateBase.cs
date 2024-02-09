@@ -10,16 +10,14 @@ namespace JakePerry.Unity.Events
     [Serializable]
     public abstract class UnityReturnDelegateBase : ISerializationCallbackReceiver
     {
-        // TODO: Remove these, just using them to easily peek Unity's code.
-        //UnityEngine.Events.UnityEvent;
-        //UnityEngine.Events.UnityEvent<int>;
-        //UnityEngine.Events.UnityEvent<int, int, int, int>;
-
         [SerializeField]
         private UnityEngine.Object m_target;
 
         [SerializeField]
-        private string m_targetAssemblyTypeName;
+        private SerializeTypeDefinition m_staticTypeTarget;
+
+        [SerializeField]
+        private bool m_targetingStaticMember;
 
         [SerializeField]
         private string m_methodName;
@@ -35,16 +33,6 @@ namespace JakePerry.Unity.Events
 
         private bool m_dirty = true;
         private RuntimeInvocableCall m_call;
-
-        protected Type TargetType
-        {
-            get
-            {
-                return m_target != null
-                    ? m_target.GetType()
-                    : Type.GetType(m_targetAssemblyTypeName, throwOnError: false);
-            }
-        }
 
         protected abstract Type ReturnType { get; }
 
@@ -143,7 +131,8 @@ namespace JakePerry.Unity.Events
             {
                 if (ReturnDelegatesConfig.ErrorLoggingEnabled)
                 {
-                    // TODO: Log an error stating that a method was found but return type was incorrect. Likely a signature change since serialization.
+                    // TODO: Log an error stating that a method was found but return type was incorrect.
+                    // Likely a signature change since serialization.
                     ReturnDelegatesUtility.LogError("");
                 }
             }
@@ -229,17 +218,45 @@ namespace JakePerry.Unity.Events
             return GetValidMethodInfo(targetType, m_methodName, returnType, argTypes);
         }
 
+        private Type ResolveInvocationType()
+        {
+            if (!m_targetingStaticMember)
+            {
+                if (m_target is not null)
+                {
+                    return m_target.GetType();
+                }
+                else
+                {
+                    // TODO: Report an error here. Change policy to more generic instead of specifically for destroyed targets?
+                }
+            }
+            else if (!m_staticTypeTarget.IsNull)
+            {
+                //var type = Type.GetType(m_staticTypeTarget, throwOnError: false);
+                //if (type is not null) return type;
+
+                // TODO: Error that static type wasnt found/resolved.
+            }
+            else
+            {
+                // TODO: Error that nothing is set 
+            }
+
+            return null;
+        }
+
         private void ResolveRuntimeCallIfDirty()
         {
             if (m_dirty)
             {
-                var type = TargetType;
+                var type = ResolveInvocationType();
                 if (type != null)
                 {
                     var method = FindMethod(type);
                     if (method != null)
                     {
-                        if (method.IsStatic == (m_target == null))
+                        if (method.IsStatic == (m_target is null))
                         {
                             var target = method.IsStatic ? null : m_target;
 

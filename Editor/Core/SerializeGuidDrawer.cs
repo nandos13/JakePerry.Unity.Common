@@ -136,7 +136,7 @@ namespace JakePerry.Unity
                     }
             }
 
-            if (EditorGUIEx.CustomGuiButton(buttonRect, id, EditorGUIEx.GetStyle("m_ObjectFieldButton"), GUIContent.none))
+            if (EditorGUIEx.CustomGuiButton(buttonRect, id, EditorGUIEx.Styles.GetStyle("m_ObjectFieldButton"), GUIContent.none))
             {
                 DoObjectField(r, id, guid);
 
