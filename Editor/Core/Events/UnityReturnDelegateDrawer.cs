@@ -170,7 +170,7 @@ namespace JakePerry.Unity.Events
             var modeProp = property.FindPropertyRelative("m_targetingStaticMember");
             bool @static = modeProp.boolValue;
 
-            var staticTargetProp = property.FindPropertyRelative("m_staticTypeTarget");
+            var staticTargetProp = property.FindPropertyRelative("m_staticTargetType");
             var targetProp = property.FindPropertyRelative("m_target");
 
             var typeIconRect = rect.WithWidth(rect.height);
@@ -255,7 +255,7 @@ namespace JakePerry.Unity.Events
                 
                 if (@static)
                 {
-                    var staticTargetProp = property.FindPropertyRelative("m_staticTypeTarget");
+                    var staticTargetProp = property.FindPropertyRelative("m_staticTargetType");
 
                     var typeDef = SerializeTypeDefinition.EditorUtil.GetTypeDefinition(staticTargetProp);
                     var type = typeDef.IsNull ? null : typeDef.ResolveType(throwOnError: false);
@@ -350,7 +350,7 @@ namespace JakePerry.Unity.Events
             var definedByEvent = property.FindPropertyRelative("m_argumentsDefinedByEvent").boolValue;
 
             float targetHeight = @static
-                ? EditorGUI.GetPropertyHeight(property.FindPropertyRelative("m_staticTypeTarget"))
+                ? EditorGUI.GetPropertyHeight(property.FindPropertyRelative("m_staticTargetType"))
                 : LineHeight;
 
             var methodAndArgsHeight = LineHeight;
@@ -400,7 +400,7 @@ namespace JakePerry.Unity.Events
             else
             {
                 var topLineRect = position.WithHeight(LineHeight);
-                var targetRect = topLineRect.WithWidth(position.width * 0.3f);
+                var targetRect = topLineRect.WithWidth(position.width * 0.38f);
                 var methodRect = topLineRect.PadLeft(targetRect.width + Spacing);
 
                 EditorGUI.BeginChangeCheck();

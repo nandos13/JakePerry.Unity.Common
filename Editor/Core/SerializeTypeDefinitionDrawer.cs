@@ -149,7 +149,7 @@ namespace JakePerry.Unity
             // Might only be worth once this moves out to its own selector menu.
             foreach (var type in @namespace.EnumerateTypesInNamespace())
             {
-                // TODO: Some times definitely dont show, ie. System.Collections.Generic is almost empty??
+                // TODO: Some items definitely dont show, ie. System.Collections.Generic is almost empty??
                 if (IgnoreType(type)) continue;
 
                 if (!didSeparator)
@@ -167,13 +167,54 @@ namespace JakePerry.Unity
             }
         }
 
+        private static void AddBuiltInTypes(GenericMenu menu)
+        {
+            const string kBuiltInsPath = "Built-in types/";
+
+            var callback = _typeSelectCallback;
+
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Boolean"), false, callback, typeof(bool));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Byte"), false, callback, typeof(byte));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "SByte"), false, callback, typeof(sbyte));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Char"), false, callback, typeof(char));
+
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Floating point numbers"), false, null);
+
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Single (float)"), false, callback, typeof(float));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Double"), false, callback, typeof(double));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Decimal"), false, callback, typeof(decimal));
+
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Integers"), false, null);
+
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Int16 (short)"), false, callback, typeof(short));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Int32 (int)"), false, callback, typeof(int));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Int64 (long)"), false, callback, typeof(long));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "UInt16 (ushort)"), false, callback, typeof(ushort));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "UInt32 (uint)"), false, callback, typeof(uint));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "UInt64 (ulong)"), false, callback, typeof(ulong));
+
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Native-size integers"), false, null);
+
+            menu.AddItem(new GUIContent(kBuiltInsPath + "IntPtr (nint)"), false, callback, typeof(IntPtr));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "UIntPtr (unint)"), false, callback, typeof(UIntPtr));
+
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Others"), false, null);
+
+            menu.AddItem(new GUIContent(kBuiltInsPath + "String"), false, callback, typeof(string));
+            menu.AddItem(new GUIContent(kBuiltInsPath + "Object"), false, callback, typeof(object));
+        }
+
         private static GenericMenu BuildTypesMenu(SerializedProperty property)
         {
             var menu = new GenericMenu();
 
             _typeSelectCallback ??= OnSelectType;
 
-            // TODO: Add a 'None' option to clear the type
+            menu.AddItem(new GUIContent("None"), false, _typeSelectCallback, null);
+            menu.AddSeparator(string.Empty);
+
+            AddBuiltInTypes(menu);
+            menu.AddSeparator(string.Empty);
 
             var rootNamespace = NamespaceCache.GetGlobalNamespace();
             AddNamespaceToMenu(menu, string.Empty, rootNamespace, property);

@@ -56,7 +56,9 @@ namespace JakePerry.Unity
                 !m_wantsUnboundGeneric &&
                 (m_genericArgs?.Length ?? 0) > 0)
             {
-                var intPart = m_typeName.AsSpan(m_typeName.LastIndexOf('`') + 1);
+                var typeName = t.Name;
+
+                var intPart = typeName.AsSpan(typeName.LastIndexOf('`') + 1);
                 var argumentCount = int.Parse(intPart);
 
                 if (m_genericArgs.Length != argumentCount)
@@ -66,11 +68,23 @@ namespace JakePerry.Unity
                     Debug.LogError(message);
                     return null;
                 }
-                
+
                 var genericArguments = new Type[argumentCount];
                 for (int i = 0; i < argumentCount; ++i)
                 {
-                    genericArguments[i] = m_genericArgs[i].ResolveType();
+                    var arg = m_genericArgs[i].ResolveType();
+
+                    if (arg is null)
+                    {
+                        if (throwOnError)
+                        {
+                            var message = "A generic type is assigned but one or more generic arguments were unable to be resolved.";
+                            throw new InvalidOperationException(message);
+                        }
+                        return null;
+                    }
+
+                    genericArguments[i] = arg;
                 }
 
                 t = t.MakeGenericType(genericArguments);

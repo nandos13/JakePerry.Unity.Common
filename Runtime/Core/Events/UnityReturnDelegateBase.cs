@@ -14,7 +14,7 @@ namespace JakePerry.Unity.Events
         private UnityEngine.Object m_target;
 
         [SerializeField]
-        private SerializeTypeDefinition m_staticTypeTarget;
+        private SerializeTypeDefinition m_staticTargetType;
 
         [SerializeField]
         private bool m_targetingStaticMember;
@@ -231,7 +231,7 @@ namespace JakePerry.Unity.Events
                     // TODO: Report an error here. Change policy to more generic instead of specifically for destroyed targets?
                 }
             }
-            else if (!m_staticTypeTarget.IsNull)
+            else if (!m_staticTargetType.IsNull)
             {
                 //var type = Type.GetType(m_staticTypeTarget, throwOnError: false);
                 //if (type is not null) return type;
