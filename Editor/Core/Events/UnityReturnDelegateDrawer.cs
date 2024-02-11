@@ -193,7 +193,7 @@ namespace JakePerry.Unity.Events
 
             if (@static)
             {
-                EditorGUI.PropertyField(objRect, staticTargetProp, GUIContent.none);
+                SerializeTypeDefinitionDrawer.DrawGUI(objRect, staticTargetProp, false);
             }
             else
             {
@@ -350,7 +350,7 @@ namespace JakePerry.Unity.Events
             var definedByEvent = property.FindPropertyRelative("m_argumentsDefinedByEvent").boolValue;
 
             float targetHeight = @static
-                ? EditorGUI.GetPropertyHeight(property.FindPropertyRelative("m_staticTargetType"))
+                ? SerializeTypeDefinitionDrawer.GetPropertyHeight(property.FindPropertyRelative("m_staticTargetType"), false)
                 : LineHeight;
 
             var methodAndArgsHeight = LineHeight;

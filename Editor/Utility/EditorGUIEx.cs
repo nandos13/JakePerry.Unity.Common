@@ -133,6 +133,11 @@ namespace JakePerry.Unity
             }
         }
 
+        public static Texture2D GetIconForGUI(string iconGuid)
+        {
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(iconGuid));
+        }
+
         public static bool CustomGuiButton(Rect rect, int id, GUIStyle style, GUIContent content)
         {
             bool result = false;
