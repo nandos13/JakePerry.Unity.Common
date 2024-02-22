@@ -56,14 +56,29 @@ namespace JakePerry.Unity
             return new Rect(r.x, r.y + offset, r.width, r.height);
         }
 
-        public static Rect WithWidth(this Rect r, float width)
+        public static Rect WithWidth(this Rect r, float width, bool anchorRight = false)
         {
+            if (anchorRight)
+            {
+                r.x += r.width - width;
+            }
             r.width = width;
             return r;
         }
 
-        public static Rect WithHeight(this Rect r, float height)
+        public static Rect WithHeight(this Rect r, float height, bool anchorBottom = false)
         {
+            if (anchorBottom)
+            {
+                r.y += r.height - height;
+            }
+            r.height = height;
+            return r;
+        }
+
+        public static Rect WithSize(this Rect r, float width, float height)
+        {
+            r.width = width;
             r.height = height;
             return r;
         }

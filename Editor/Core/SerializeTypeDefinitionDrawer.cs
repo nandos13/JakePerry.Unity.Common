@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEditor;
-using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
 
+using static JakePerry.Unity.TypeSerializationUtility;
+
 using static JakePerry.Unity.EditorHelpersStatic;
+using UnityEngine.UIElements;
 
 namespace JakePerry.Unity
 {
@@ -15,15 +17,75 @@ namespace JakePerry.Unity
     {
         private const string kBuiltInsPath = "Built-in types/";
 
+        private const float kArgPaddingV = 4;
+
         private sealed class TypeSelectArgs
         {
             public SerializedProperty property;
             public Type type;
         }
 
+        private sealed class Properties
+        {
+            public Rect position;
+            public SerializedProperty property;
+            public Type type;
+            public Type genericArgument;
+
+            public SerializedProperty typeName;
+            public SerializedProperty wantsUnbound;
+            public SerializedProperty genericArgs;
+
+            public ParamsArray<Properties> genericArgProperties;
+            public float genericArgNamesWidth;
+
+            public bool hovered;
+        }
+
+        private static readonly ListPool<Properties> _propertiesPool = new();
+
         private static readonly Dictionary<(Type, string), bool> _allowUnboundGenericsLookup = new();
+        private static readonly Dictionary<Type, Type[]> _unboundArgsCache = new();
+
+        private static readonly GUIContent _tempContent = new();
+
+        /// <summary>
+        /// Indicates whether unbound generics are explicitly disallowed for the
+        /// current serialized data.
+        /// <para/>
+        /// When this flag is set to <see langword="true"/>, generic type arguments
+        /// are always shown and an unbound type definition cannot be set.
+        /// </summary>
+        private static bool _disallowUnboundGeneric;
 
         private static GenericMenu.MenuFunction2 _typeSelectCallback;
+
+        private static GUIStyle _genericArgNameStyle;
+        private static GUIStyle _groupBox;
+
+        public static GUIStyle GenericArgumentNameStyle
+        {
+            get
+            {
+                if (_genericArgNameStyle is null)
+                {
+                    _genericArgNameStyle = new GUIStyle(EditorStyles.miniLabel);
+                    _genericArgNameStyle.hover.textColor = Color.yellow;
+                }
+                return _genericArgNameStyle;
+            }
+        }
+
+        public static GUIStyle GroupBox => _groupBox ??= new GUIStyle("GroupBox");
+
+        private static Type[] GetGenericArgumentsAndCache(Type t)
+        {
+            if (!_unboundArgsCache.TryGetValue(t, out Type[] result))
+            {
+                _unboundArgsCache[t] = result = t.GetGenericArguments();
+            }
+            return result;
+        }
 
         private static bool IsUnboundGenericTypeAllowedForProperty(SerializedProperty property)
         {
@@ -42,49 +104,79 @@ namespace JakePerry.Unity
             return allowUnbound;
         }
 
-        private static float GetPropertyHeight(
+        private static void ValidateSerializedData(
             SerializedProperty property,
-            bool allowUnboundGenericType,
-            bool drawResolvedGenericTypeName)
+            bool isNested)
         {
-            var typeDef = SerializeTypeDefinition.EditorUtil.GetTypeDefinition(property);
-            var resolvedType = typeDef.ResolveTypeUnbound(throwOnError: false);
+            var typeNameProp = property.FindPropertyRelative("m_typeName");
+            var wantsUnboundProp = property.FindPropertyRelative("m_wantsUnboundGeneric");
+            var argsProp = property.FindPropertyRelative("m_genericArgs");
+
+            var type = SerializeTypeDefinition.ResolveTypeWithCache(typeNameProp.stringValue, false, true);
+            if (type?.IsGenericTypeDefinition ?? false)
+            {
+                var unboundGenericArguments = GetGenericArgumentsAndCache(type);
+
+                if (_disallowUnboundGeneric && wantsUnboundProp.boolValue)
+                {
+                    if (!isNested)
+                    {
+                        var errContext = property.serializedObject.targetObject;
+                        Debug.LogError(
+                            "SerializeTypeDefinition had unbound generic type was assigned but is not allowed. " +
+                            $"Property path: {property.propertyPath}",
+                            errContext);
+                    }
+
+                    wantsUnboundProp.boolValue = false;
+                    argsProp.arraySize = unboundGenericArguments.Length;
+                }
+                else
+                {
+                    // TODO: Array size isnt actually validated here?
+
+                    for (int i = 0; i < argsProp.arraySize; ++i)
+                    {
+                        var arg = argsProp.GetArrayElementAtIndex(i);
+                        ValidateSerializedData(arg, true);
+                    }
+                }
+            }
+            else
+            {
+                wantsUnboundProp.boolValue = false;
+                argsProp.ClearArray();
+            }
+        }
+
+        private static float GetPropertyHeight(SerializedProperty property)
+        {
+            var typeNameProp = property.FindPropertyRelative("m_typeName");
+            var t = SerializeTypeDefinition.ResolveTypeWithCache(typeNameProp.stringValue, false, true);
 
             // One line for main type selection content
             float height = LineHeight;
 
-            if (resolvedType is not null && resolvedType.IsGenericTypeDefinition)
+            if (t?.IsGenericTypeDefinition ?? false)
             {
-                bool drawGenericArgs = true;
-                if (allowUnboundGenericType)
-                {
-                    // One line for bound/unbound toggle
-                    height += Spacing + LineHeight;
-
-                    var wantsUnboundProp = property.FindPropertyRelative("m_wantsUnboundGeneric");
-                    drawGenericArgs = !wantsUnboundProp.boolValue;
-                }
-
-                if (drawGenericArgs)
+                var wantsUnboundProp = property.FindPropertyRelative("m_wantsUnboundGeneric");
+                if (!wantsUnboundProp.boolValue)
                 {
                     var argsProp = property.FindPropertyRelative("m_genericArgs");
                     if (argsProp.arraySize > 0)
                     {
                         for (int i = 0; i < argsProp.arraySize; ++i)
                         {
+                            height += 2;
+
                             // Dynamically add height per generic argument
                             height += Spacing;
-                            height += GetPropertyHeight(
-                                property: argsProp.GetArrayElementAtIndex(i),
-                                allowUnboundGenericType: allowUnboundGenericType,
-                                drawResolvedGenericTypeName: false);
+                            height += GetPropertyHeight(property: argsProp.GetArrayElementAtIndex(i));
+                            height += kArgPaddingV * 2;
                         }
                     }
-                }
 
-                if (drawResolvedGenericTypeName)
-                {
-                    height += Spacing + LineHeight;
+                    height += 1;
                 }
             }
 
@@ -93,10 +185,109 @@ namespace JakePerry.Unity
 
         internal static float GetPropertyHeight(SerializedProperty property, bool allowUnboundGenericType)
         {
-            return GetPropertyHeight(
-                property: property,
-                allowUnboundGenericType: allowUnboundGenericType,
-                drawResolvedGenericTypeName: true);
+            _disallowUnboundGeneric = !allowUnboundGenericType;
+            try
+            {
+                ValidateSerializedData(property, false);
+
+                // Standard property height, with an additional line for the resolved type name.
+                float height = GetPropertyHeight(property);
+                height += Spacing + LineHeight;
+
+                return height;
+            }
+            finally { _disallowUnboundGeneric = false; }
+        }
+
+        private static Properties BuildProperties(
+            Rect position,
+            SerializedProperty property,
+            Type genericArgument = null)
+        {
+            var typeName = property.FindPropertyRelative("m_typeName");
+            var wantsUnbound = property.FindPropertyRelative("m_wantsUnboundGeneric");
+            var genericArgs = property.FindPropertyRelative("m_genericArgs");
+
+            var t = SerializeTypeDefinition.ResolveTypeWithCache(typeName.stringValue, false, true);
+
+            var genericArgProperties = ParamsArray<Properties>.Empty;
+
+            float genericArgNamesWidth = 0f;
+
+            bool isGenericTypeDef = t is not null && t.IsGenericTypeDefinition;
+            if (isGenericTypeDef && !wantsUnbound.boolValue)
+            {
+                var unboundGenericArguments = GetGenericArgumentsAndCache(t);
+
+                foreach (var argType in unboundGenericArguments)
+                {
+                    _tempContent.text = argType.Name;
+                    GenericArgumentNameStyle.CalcMinMaxWidth(_tempContent, out float nWidth, out _);
+
+                    genericArgNamesWidth = Mathf.Max(genericArgNamesWidth, nWidth);
+                }
+
+                var rect = position.PadTop(LineHeight + Spacing);
+
+                using var scope = _propertiesPool.RentInScope(out var argList);
+
+                for (int i = 0; i < genericArgs.arraySize; ++i)
+                {
+                    rect.y += 1;
+
+                    var arg = genericArgs.GetArrayElementAtIndex(i);
+                    var argType = unboundGenericArguments[i];
+
+                    var argHeight = GetPropertyHeight(arg) + kArgPaddingV * 2;
+                    var argRect = rect.WithHeight(argHeight);
+                    rect = rect.PadTop(argHeight + Spacing + 1);
+
+                    var argContentRect = argRect.Pad(genericArgNamesWidth + 18f, 2, kArgPaddingV, kArgPaddingV);
+
+                    var argProperties = BuildProperties(
+                        position: argContentRect,
+                        property: arg,
+                        genericArgument: argType);
+
+                    argProperties.position = argRect;
+
+                    argList.Add(argProperties);
+                }
+
+                genericArgProperties = ParamsArray<Properties>.FromList(argList);
+            }
+
+            return new Properties()
+            {
+                position = position,
+                property = property,
+                type = t,
+                genericArgument = genericArgument,
+                typeName = typeName,
+                wantsUnbound = wantsUnbound,
+                genericArgs = genericArgs,
+                genericArgProperties = genericArgProperties,
+                genericArgNamesWidth = genericArgNamesWidth
+            };
+        }
+
+        private static bool FindHover(Properties properties, Vector2 mousePos)
+        {
+            foreach (var child in properties.genericArgProperties)
+            {
+                if (FindHover(child, mousePos))
+                {
+                    return true;
+                }
+            }
+
+            if (properties.position.Contains(mousePos))
+            {
+                properties.hovered = true;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool IgnoreType(Type t)
@@ -153,7 +344,7 @@ namespace JakePerry.Unity
                 {
                     if (!wantsUnboundProp.boolValue)
                     {
-                        argsProp.arraySize = type.GetGenericArguments().Length;
+                        argsProp.arraySize = GetGenericArgumentsAndCache(type).Length;
                     }
                 }
                 else
@@ -161,8 +352,7 @@ namespace JakePerry.Unity
                     wantsUnboundProp.boolValue = false;
                 }
 
-                // TODO: Pump through the wrapped UnityEventTools method. Probably also extract this method out.
-                typeNameProp.stringValue = type.AssemblyQualifiedName;
+                typeNameProp.stringValue = TidyTypeNameForSerialization(type.AssemblyQualifiedName);
             }
             else
             {
@@ -258,6 +448,8 @@ namespace JakePerry.Unity
 
         private static GenericMenu BuildTypesMenu(SerializedProperty property)
         {
+            // TODO: Editor assemblies should be ignored if the serialized data belongs to runtime?
+
             var menu = new GenericMenu();
 
             _typeSelectCallback ??= OnSelectType;
@@ -274,143 +466,160 @@ namespace JakePerry.Unity
             return menu;
         }
 
-        private static void DrawGUI(
-            Rect position,
-            SerializedProperty property,
-            Type genericArg,
-            bool allowUnboundGenericType,
-            bool drawResolvedGenericTypeName)
+        private static void DrawTypeSelectRect(Rect position, SerializedProperty property, GUIContent content)
+        {
+            // TODO: Address performance issues with generic menu creation.
+            // This type may benefit from a new window like the object selector.
+
+            if (EditorGUI.DropdownButton(position, content, FocusType.Passive, EditorStyles.popup))
+            {
+                BuildTypesMenu(property).DropDown(position);
+            }
+        }
+
+        private static void HandleBindingButton(Rect position, Properties properties)
+        {
+            bool wantsBound = !properties.wantsUnbound.boolValue;
+
+            GUIContent unboundToggleContent;
+            if (!wantsBound)
+            {
+                unboundToggleContent = EditorGUIUtility.IconContent("d_Unlinked@2x");
+                unboundToggleContent.tooltip =
+                    "Generic binding disabled.\n" +
+                    "An unbound generic type will be resolved ie. typeof(List<>). Click to enable binding.";
+            }
+            else
+            {
+                unboundToggleContent = EditorGUIUtility.IconContent("d_Linked@2x");
+                unboundToggleContent.tooltip =
+                    "Generic binding enabled.\n" +
+                    "A closed generic type will be resolved ie. typeof(List<int>). Click to disable binding.";
+            }
+
+            var btnStyle = EditorGUIEx.Styles.GetStyle("m_IconButton");
+            int btnId = "SerializeTypeDefinitionDrawer.BindingToggle".GetHashCode();
+
+            if (EditorGUIEx.CustomGuiButton(position, btnId, btnStyle, unboundToggleContent))
+            {
+                wantsBound = !wantsBound;
+
+                properties.wantsUnbound.boolValue = !wantsBound;
+                properties.genericArgs.ClearArray();
+
+                if (wantsBound)
+                {
+                    properties.genericArgs.arraySize = GetGenericArgumentsAndCache(properties.type).Length;
+                }
+
+                GUIUtility.ExitGUI();
+            }
+        }
+
+        private static void DrawGUI(Properties properties)
         {
             // TODO: Restrict selectable types by generic argument. Also look at conforming to generic restraints, etc.
             // TODO: If unbound generics are not allowed and it's currently assigned an unbound generic, show a warning/error icon.
+            // TODO: Show a warning/error if only half bound
 
-            var typeDef = SerializeTypeDefinition.EditorUtil.GetTypeDefinition(property);
-            var resolvedType = typeDef.ResolveTypeUnbound(throwOnError: false);
-
+            // TODO: Account for scenario when string is not empty, but unresolvable (maybe type deleted etc?).
             GUIContent content;
-            if (resolvedType is null)
+            if (properties.type is null)
             {
                 content = new GUIContent("None");
             }
             else
             {
-                content = new GUIContent(resolvedType.FullName);
+                content = new GUIContent(properties.type.FullName);
             }
 
-            // TODO: Address performance issues with generic menu creation.
-            // This type may benefit from a new window like the object selector.
+            var position = properties.position;
 
             var typeRect = position.WithHeight(LineHeight);
-            position = position.PadTop(typeRect.height + Spacing);
 
-            if (EditorGUI.DropdownButton(typeRect, content, FocusType.Passive, EditorStyles.popup))
-            {
-                BuildTypesMenu(property).DropDown(typeRect);
-            }
-
-            if (resolvedType is not null && resolvedType.IsGenericTypeDefinition)
+            if (properties.type?.IsGenericTypeDefinition ?? false)
             {
                 // TODO: Unbound generics probably dont EVER work as a generic arg itself..
                 // ie. you can have List<List<int>> but cant have a List<List<>>.
 
-                var wantsUnboundProp = property.FindPropertyRelative("m_wantsUnboundGeneric");
-                var argsProp = property.FindPropertyRelative("m_genericArgs");
-
-                bool drawGenericArgs = true;
-                if (allowUnboundGenericType)
+                if (!_disallowUnboundGeneric)
                 {
-                    var unboundToggleRect = position.WithHeight(LineHeight);
-                    position = position.PadTop(unboundToggleRect.height + Spacing);
+                    var unboundToggleRect = typeRect.PadLeft(typeRect.width - LineHeight);
+                    typeRect = typeRect.PadRight(unboundToggleRect.width + Spacing);
 
-                    drawGenericArgs = !wantsUnboundProp.boolValue;
+                    HandleBindingButton(unboundToggleRect, properties);
+                }
 
-                    var unboundContent = new GUIContent(
-                        text: "Bind Generic Arguments",
-                        tooltip: "Should generic arguments be bound?\n" +
-                        "When set to true, generic arguments can be assigned in the inspector;\n" +
-                        "When false, this will resolve the unbound generic type definition.");
+                float nameWidth = properties.genericArgNamesWidth;
 
-                    EditorGUI.BeginChangeCheck();
+                foreach (var argProperties in properties.genericArgProperties)
+                {
+                    var argRect = argProperties.position;
+                    var argBgRect = argRect;
 
-                    bool wantsBound = !wantsUnboundProp.boolValue;
-                    wantsBound = EditorGUI.ToggleLeft(unboundToggleRect, unboundContent, wantsBound);
+                    var argLineRect = argRect.Pad(left: 4, top: 4, bottom: 4).WithWidth(1);
+                    argRect = argRect.Pad(6, 2, kArgPaddingV, kArgPaddingV);
 
-                    if (EditorGUI.EndChangeCheck())
+                    var nameRect = argRect.WithSize(nameWidth, LineHeight);
+                    argRect = argRect.PadLeft(nameWidth + 12f);
+
+                    argProperties.position = argRect;
+
+                    if (Event.current.type == EventType.Repaint)
                     {
-                        wantsUnboundProp.boolValue = !wantsBound;
-                        argsProp.ClearArray();
+                        // TODO: Highlight on hover
+                        bool hover = argProperties.hovered;
 
-                        if (wantsBound)
+                        GroupBox.Draw(argBgRect, GUIContent.none, -1, on: false, hover: hover);
+
+                        // TODO: Find something nicer than this. GroupBox doesnt respond to hover.
+                        if (hover)
                         {
-                            argsProp.arraySize = resolvedType.GetGenericArguments().Length;
+                            var hoverColor = Color.white;
+                            hoverColor.a = 0.08f;
+
+                            var hoverBgRect = argBgRect.Pad(1, 1, 1, 1);
+                            EditorGUI.DrawRect(hoverBgRect, hoverColor);
                         }
+
+                        // TODO: Color with argument text
+                        EditorGUI.DrawRect(argLineRect, Color.white);
+
+                        var argName = argProperties.genericArgument.Name;
+                        _tempContent.text = argName;
+                        _tempContent.tooltip = argName;
+
+                        GenericArgumentNameStyle.Draw(nameRect, _tempContent, hover, false, false, false);
                     }
-                }
-                // If unbound generics aren't allowed, we need to enforce it in the serialized data.
-                else if (wantsUnboundProp.boolValue)
-                {
-                    wantsUnboundProp.boolValue = false;
-                    // TODO: Error here about a previously unbound type forcing bound.
-                    // Note that this is probs becuase the attribute was added after data serialized.
-                    Debug.LogError("");
-                }
 
-                if (drawGenericArgs)
-                {
-                    var unboundGenericArguments = resolvedType.GetGenericArguments();
-
-                    // TODO: Validate args here in case array size is wrong, etc.
-                    if (argsProp.arraySize > 0)
-                    {
-                        for (int i = 0; i < argsProp.arraySize; ++i)
-                        {
-                            var genericArgProp = argsProp.GetArrayElementAtIndex(i);
-
-                            float genericArgHeight = GetPropertyHeight(
-                                property: genericArgProp,
-                                allowUnboundGenericType: allowUnboundGenericType,
-                                drawResolvedGenericTypeName: false);
-
-                            var argRect = position.WithHeight(genericArgHeight);
-                            position = position.PadTop(argRect.height + Spacing);
-
-                            var argNameRect = new Rect(argRect.x, argRect.y, 40f, LineHeight);
-                            argRect = argRect.PadLeft(argNameRect.width + Spacing);
-
-                            // TODO: Improve layout for the arg name label (TKey, etc).
-                            var argName = unboundGenericArguments[i].Name;
-                            EditorGUI.LabelField(argNameRect, new GUIContent(argName, argName));
-
-                            DrawGUI(
-                                position: argRect,
-                                property: genericArgProp,
-                                genericArg: unboundGenericArguments[i],
-                                allowUnboundGenericType: allowUnboundGenericType,
-                                drawResolvedGenericTypeName: false);
-                        }
-                    }
-                }
-
-                if (drawResolvedGenericTypeName)
-                {
-                    var finalTypeNameRect = position.WithHeight(LineHeight);
-                    //position = position.PadTop(finalTypeNameRect.height + Spacing);
-
-                    var finalTypeName = SerializeTypeDefinition.EditorUtil.GetTypeName(typeDef);
-
-                    EditorGUI.LabelField(finalTypeNameRect, finalTypeName, EditorStyles.miniLabel);
+                    DrawGUI(argProperties);
                 }
             }
+
+            DrawTypeSelectRect(typeRect, properties.property, content);
         }
 
         internal static void DrawGUI(Rect position, SerializedProperty property, bool allowUnboundGenericType)
         {
-            DrawGUI(
-                position: position,
-                property: property,
-                genericArg: null,
-                allowUnboundGenericType: allowUnboundGenericType,
-                drawResolvedGenericTypeName: true);
+            _disallowUnboundGeneric = !allowUnboundGenericType;
+            try
+            {
+                ValidateSerializedData(property, false);
+
+                var resolvedTypeNameRect = position.WithHeight(LineHeight, anchorBottom: true);
+                position = position.PadBottom(LineHeight + Spacing);
+
+                var properties = BuildProperties(position, property);
+
+                FindHover(properties, Event.current.mousePosition);
+
+                // TODO: Pre-calc resolved name rects, check hovered.
+
+                DrawGUI(properties);
+
+                // TODO: Draw resolved type name here...
+            }
+            finally { _disallowUnboundGeneric = false; }
         }
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
@@ -421,8 +630,6 @@ namespace JakePerry.Unity
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
-            // TODO: Draw a background around the rect, also provide 1-2 pixels padding between each generic arg.
-
             if (label != GUIContent.none)
             {
                 position = EditorGUI.PrefixLabel(position, label);

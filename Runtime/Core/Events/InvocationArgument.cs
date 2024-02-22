@@ -55,11 +55,12 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
-    internal sealed class ObjectArgument : InvocationArgument, ISerializationCallbackReceiver
+    internal sealed class ObjectArgument : InvocationArgument
     {
         [SerializeField]
         private UnityEngine.Object m_value;
 
+        // TODO: This needs to be validated via the 'tidy' method when the value is set in inspector.
         [SerializeField]
         private string m_assemblyTypeName;
 
@@ -90,15 +91,5 @@ namespace JakePerry.Unity.Events
         }
 
         internal override object ArgumentValue => (object)m_value;
-
-        void ISerializationCallbackReceiver.OnBeforeSerialize()
-        {
-            m_assemblyTypeName = UnityEventToolsWrapper.TidyAssemblyTypeName(m_assemblyTypeName);
-        }
-
-        void ISerializationCallbackReceiver.OnAfterDeserialize()
-        {
-            m_assemblyTypeName = UnityEventToolsWrapper.TidyAssemblyTypeName(m_assemblyTypeName);
-        }
     }
 }

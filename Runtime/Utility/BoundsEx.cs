@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace JakePerry.Unity
@@ -96,7 +97,7 @@ namespace JakePerry.Unity
 
             Mesh copyMesh = null;
 
-            var renderers = ListPool<Renderer>.Get();
+            using var scope = ListPool.RentInScope(out List<Renderer> renderers);
             try
             {
                 root.GetComponentsInChildren(includeInactive, renderers);
@@ -151,8 +152,6 @@ namespace JakePerry.Unity
             {
                 if (copyMesh != null)
                     UnityEngine.Object.DestroyImmediate(copyMesh);
-
-                ListPool<Renderer>.Release(ref renderers);
             }
 
             return b;

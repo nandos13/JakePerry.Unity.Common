@@ -1,3 +1,4 @@
+using JakePerry.Unity.Events;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -30,21 +31,30 @@ namespace JakePerry.Unity
         }
 #endif
 
-        internal Type ResolveTypeUnbound(bool throwOnError)
+        internal static Type ResolveTypeWithCache(string typeName, bool throwOnError, bool cacheFailure)
         {
-            if (IsNull)
+            if (string.IsNullOrEmpty(typeName))
             {
                 if (throwOnError) throw new InvalidOperationException("Type name unassigned.");
                 return null;
             }
 
-            if (!_cache.TryGetValue(m_typeName, out Type t))
+            if (!_cache.TryGetValue(typeName, out Type t))
             {
-                t = Type.GetType(m_typeName, throwOnError: throwOnError, ignoreCase: false);
-                _cache[m_typeName] = t;
+                t = Type.GetType(typeName, throwOnError: throwOnError, ignoreCase: false);
+
+                if (t is not null || cacheFailure)
+                {
+                    _cache[typeName] = t;
+                }
             }
 
             return t;
+        }
+
+        internal Type ResolveTypeUnbound(bool throwOnError)
+        {
+            return ResolveTypeWithCache(m_typeName, throwOnError, true);
         }
 
         public Type ResolveType(bool throwOnError)
