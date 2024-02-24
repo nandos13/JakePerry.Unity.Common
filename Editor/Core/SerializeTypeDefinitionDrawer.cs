@@ -8,7 +8,6 @@ using UnityEngine;
 using static JakePerry.Unity.TypeSerializationUtility;
 
 using static JakePerry.Unity.EditorHelpersStatic;
-using UnityEngine.UIElements;
 
 namespace JakePerry.Unity
 {
@@ -143,10 +142,6 @@ namespace JakePerry.Unity
             {
                 var unboundGenericArguments = GetGenericArgumentsAndCache(type);
 
-                // If want unbound,
-                //  If not allowed, validate as is current
-                //  Else, Clear it
-                // Else, arg size must equal arguments
                 if (wantsUnboundProp.boolValue)
                 {
                     if (_disallowUnboundGeneric)
@@ -186,6 +181,8 @@ namespace JakePerry.Unity
                         ValidateSerializedData(arg);
                     }
                 }
+
+                // TODO: Validate each argument works with any generic restrictions (Does AssignableFrom work?)
             }
             else
             {
@@ -466,36 +463,35 @@ namespace JakePerry.Unity
 
         private static void AddBuiltInTypes(GenericMenu menu, SerializedProperty property)
         {
-            AddBuiltInType(menu, property, "Boolean", typeof(bool));
-            AddBuiltInType(menu, property, "Byte", typeof(byte));
-            AddBuiltInType(menu, property, "SByte", typeof(sbyte));
-            AddBuiltInType(menu, property, "Char", typeof(char));
+            AddBuiltInType(menu, property, "bool", typeof(bool));
+            AddBuiltInType(menu, property, "byte", typeof(byte));
+            AddBuiltInType(menu, property, "sbyte", typeof(sbyte));
+            AddBuiltInType(menu, property, "char", typeof(char));
 
             menu.AddItem(new GUIContent(kBuiltInsPath + "Floating point numbers"), false, null);
 
-            AddBuiltInType(menu, property, "Single (float)", typeof(float));
-            AddBuiltInType(menu, property, "Double", typeof(double));
-            AddBuiltInType(menu, property, "Decimal", typeof(decimal));
+            AddBuiltInType(menu, property, "float (Single)", typeof(float));
+            AddBuiltInType(menu, property, "double", typeof(double));
+            AddBuiltInType(menu, property, "decimal", typeof(decimal));
 
             menu.AddItem(new GUIContent(kBuiltInsPath + "Integers"), false, null);
 
-            // TODO: Swap the names around. all are named via alias, these have (Int16) etc in brackets.
-            AddBuiltInType(menu, property, "Int16 (short)", typeof(short));
-            AddBuiltInType(menu, property, "Int32 (int)", typeof(int));
-            AddBuiltInType(menu, property, "Int64 (long)", typeof(long));
-            AddBuiltInType(menu, property, "UInt16 (ushort)", typeof(ushort));
-            AddBuiltInType(menu, property, "UInt32 (uint)", typeof(uint));
-            AddBuiltInType(menu, property, "UInt64 (ulong)", typeof(ulong));
+            AddBuiltInType(menu, property, "short (Int16)", typeof(short));
+            AddBuiltInType(menu, property, "int (Int32)", typeof(int));
+            AddBuiltInType(menu, property, "long (Int64)", typeof(long));
+            AddBuiltInType(menu, property, "ushort (UInt16)", typeof(ushort));
+            AddBuiltInType(menu, property, "uint (UInt32)", typeof(uint));
+            AddBuiltInType(menu, property, "ulong (UInt64)", typeof(ulong));
 
             menu.AddItem(new GUIContent(kBuiltInsPath + "Native-size integers"), false, null);
 
-            AddBuiltInType(menu, property, "IntPtr (nint)", typeof(IntPtr));
-            AddBuiltInType(menu, property, "UIntPtr (unint)", typeof(UIntPtr));
+            AddBuiltInType(menu, property, "nint (IntPtr)", typeof(IntPtr));
+            AddBuiltInType(menu, property, "unint (UIntPtr)", typeof(UIntPtr));
 
             menu.AddItem(new GUIContent(kBuiltInsPath + "Others"), false, null);
 
-            AddBuiltInType(menu, property, "String", typeof(string));
-            AddBuiltInType(menu, property, "Object", typeof(object));
+            AddBuiltInType(menu, property, "string", typeof(string));
+            AddBuiltInType(menu, property, "object", typeof(object));
         }
 
         private static GenericMenu BuildTypesMenu(SerializedProperty property)
@@ -571,19 +567,7 @@ namespace JakePerry.Unity
         private static void DrawGUI(Properties properties)
         {
             // TODO: Restrict selectable types by generic argument. Also look at conforming to generic restraints, etc.
-            // TODO: If unbound generics are not allowed and it's currently assigned an unbound generic, show a warning/error icon.
             // TODO: Show a warning/error if only half bound
-
-            // TODO: Account for scenario when string is not empty, but unresolvable (maybe type deleted etc?).
-            GUIContent content;
-            if (properties.type is null)
-            {
-                content = new GUIContent("None");
-            }
-            else
-            {
-                content = new GUIContent(properties.type.FullName);
-            }
 
             var position = properties.position;
 
@@ -646,7 +630,21 @@ namespace JakePerry.Unity
                 }
             }
 
-            DrawTypeSelectRect(typeRect, properties.property, content);
+            _tempContent.tooltip = string.Empty;
+            if (properties.type is null)
+            {
+                var serializedTypeString = properties.typeName.stringValue;
+
+                _tempContent.text = !string.IsNullOrEmpty(serializedTypeString)
+                    ? $"<Missing Type> {serializedTypeString}"
+                    : "<None>";
+            }
+            else
+            {
+                _tempContent.text = properties.type.FullName;
+            }
+
+            DrawTypeSelectRect(typeRect, properties.property, _tempContent);
         }
 
         private static NameSegmentData GetNameSegment(ref Rect rect, GUIStyle style, string text, int index)
@@ -674,7 +672,16 @@ namespace JakePerry.Unity
             const string kComma = ", ";
 
             int thisIndex = index;
-            var text = properties.type?.Name ?? properties.genericArgument.Name;
+
+            string text;
+            if (properties.type is not null)
+            {
+                text = properties.type.Name;
+            }
+            else
+            {
+                text = index == 0 ? "Null" : properties.genericArgument.Name;
+            }
 
             output.Add(GetNameSegment(ref rect, style, text, thisIndex));
 
