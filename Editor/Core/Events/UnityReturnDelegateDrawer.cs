@@ -175,7 +175,7 @@ namespace JakePerry.Unity.Events
 
             var targetRect = rect;
 
-            var typeIconRect = targetRect.WithSize(targetRect.height, LineHeight);
+            var typeIconRect = targetRect.WithSize(LineHeight, LineHeight);
             targetRect = targetRect.PadLeft(typeIconRect.width + Spacing);
 
             targetRect.height = @static

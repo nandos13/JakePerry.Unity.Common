@@ -652,6 +652,8 @@ namespace JakePerry.Unity
             _tempContent.text = text;
             style.CalcMinMaxWidth(_tempContent, out float w, out _);
 
+            w = Mathf.Min(w, rect.width);
+
             var r = rect.WithWidth(w);
             rect = rect.PadLeft(w);
 
@@ -665,8 +667,6 @@ namespace JakePerry.Unity
 
         private static void CalculateNameRects(ref Rect rect, Properties properties, GUIStyle style, List<NameSegmentData> output, int index = 0)
         {
-            // TODO: Account for masking. If we get to the end of rect, exit early.
-
             const string kLT = "<";
             const string kGT = ">";
             const string kComma = ", ";
@@ -684,21 +684,25 @@ namespace JakePerry.Unity
             }
 
             output.Add(GetNameSegment(ref rect, style, text, thisIndex));
+            if (rect.width <= 0) return;
 
             var args = properties.genericArgProperties;
             if (args.Length > 0)
             {
                 output.Add(GetNameSegment(ref rect, style, kLT, thisIndex));
+                if (rect.width <= 0) return;
 
                 foreach (var child in args)
                 {
                     if (index != thisIndex)
                     {
                         output.Add(GetNameSegment(ref rect, style, kComma, thisIndex));
+                        if (rect.width <= 0) return;
                     }
 
                     ++index;
                     CalculateNameRects(ref rect, child, style, output, index);
+                    if (rect.width <= 0) return;
                 }
 
                 output.Add(GetNameSegment(ref rect, style, kGT, thisIndex));
