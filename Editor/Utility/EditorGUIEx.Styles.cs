@@ -13,11 +13,11 @@ namespace JakePerry.Unity
             {
                 private const BindingFlags kDockStyleFlags = BindingFlags.Static | BindingFlags.Public;
 
-                private static Type DockAreaStylesType => UnityInternalsHelper.GetType(typeof(EditorGUI).Assembly, "UnityEditor.DockArea+Styles");
+                private static Type DockAreaStylesType => ReflectionEx.GetType(typeof(EditorGUI).Assembly, "UnityEditor.DockArea+Styles");
 
                 private static GUIStyle GetStyleFromField(string fieldName)
                 {
-                    var field = UnityInternalsHelper.GetField(DockAreaStylesType, "tabLabel", kDockStyleFlags);
+                    var field = ReflectionEx.GetField(DockAreaStylesType, "tabLabel", kDockStyleFlags);
                     return (GUIStyle)field.GetValue(null);
                 }
 

@@ -53,7 +53,7 @@ namespace JakePerry.Unity.Events
         {
             const BindingFlags kFlags = BindingFlags.Instance | BindingFlags.NonPublic;
 
-            var property = UnityInternalsHelper.GetProperty(BaseType, "ReturnType", kFlags);
+            var property = ReflectionEx.GetProperty(BaseType, "ReturnType", kFlags);
             return (Type)property.GetValue(del);
         }
 
@@ -61,7 +61,7 @@ namespace JakePerry.Unity.Events
         {
             const BindingFlags kFlags = BindingFlags.Instance | BindingFlags.NonPublic;
 
-            var method = UnityInternalsHelper.GetMethod(BaseType, "GetEventDefinedInvocationArgumentTypes", kFlags);
+            var method = ReflectionEx.GetMethod(BaseType, "GetEventDefinedInvocationArgumentTypes", kFlags);
             var argTypes = (Type[])method.Invoke(del, Array.Empty<object>());
 
             var sb = StringBuilderCache.Acquire();

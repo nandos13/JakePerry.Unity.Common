@@ -35,7 +35,7 @@ namespace JakePerry.Unity
             const BindingFlags kFlags = (BindingFlags)0x28;
             const string kMethodName = "DoesObjectWithInstanceIDExist";
 
-            var method = UnityInternalsHelper.GetMethod(typeof(UnityEngine.Object), kMethodName, kFlags, new ParamsArray<Type>(typeof(int)));
+            var method = ReflectionEx.GetMethod(typeof(UnityEngine.Object), kMethodName, kFlags, new ParamsArray<Type>(typeof(int)));
 
             var args = ReflectionEx.RentArrayWithArguments(id);
             bool result = (bool)method.Invoke(null, args);
@@ -55,7 +55,7 @@ namespace JakePerry.Unity
             const BindingFlags kFlags = (BindingFlags)0x28;
             const string kMethodName = "FindObjectFromInstanceID";
 
-            var method = UnityInternalsHelper.GetMethod(typeof(UnityEngine.Object), kMethodName, kFlags, new ParamsArray<Type>(typeof(int)));
+            var method = ReflectionEx.GetMethod(typeof(UnityEngine.Object), kMethodName, kFlags, new ParamsArray<Type>(typeof(int)));
 
             var args = ReflectionEx.RentArrayWithArguments(id);
             var result = method.Invoke(null, args) is T o ? o : null;

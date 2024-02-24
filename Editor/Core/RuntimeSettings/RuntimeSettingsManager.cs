@@ -10,39 +10,39 @@ namespace JakePerry.Unity
     /// <see cref="RuntimeSettingsBase"/> &amp; providing a <see cref="SettingsProvider"/>
     /// for each asset.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members")]
     internal static class RuntimeSettingsManager
     {
         [InitializeOnLoadMethod]
         [MenuItem(Project.kContextMenuItemsPath + "Settings/Create missing settings assets")]
         private static void CreateMissingSettingsAssets()
         {
-            const BindingFlags kFlags = BindingFlags.Static | BindingFlags.NonPublic;
-
-            var loadMethod = UnityInternalsHelper.GetMethod(typeof(RuntimeSettingsBase), "Load", kFlags, new ParamsArray<Type>(typeof(bool)));
-            var genericTypeArgs = new Type[1];
-
-            var invokeArgs = new object[1] { (object)true };
+            bool didCreateAnyAssets = false;
 
             foreach (var t in TypeCache.GetTypesDerivedFrom(typeof(RuntimeSettingsBase)))
             {
-                genericTypeArgs[0] = t;
-                var method = loadMethod.MakeGenericMethod(genericTypeArgs);
-
-                method.Invoke(null, invokeArgs);
+                RuntimeSettingsBase.Load(createIfMissing: true, type: t, out bool created);
+                didCreateAnyAssets |= created;
             }
 
-            AssetDatabase.SaveAssets();
+            if (didCreateAnyAssets)
+            {
+#pragma warning disable UNT0031 // Asset operations in LoadAttribute method
+                // Justification: This will only run when a new settings type
+                // is added to the project.
+                AssetDatabase.SaveAssets();
+#pragma warning restore UNT0031
+            }
 
             SettingsService.NotifySettingsProviderChanged();
         }
 
         [SettingsProviderGroup]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members")]
         private static SettingsProvider[] CreateSettingsProviders()
         {
             const BindingFlags kFlags = BindingFlags.Static | BindingFlags.NonPublic;
 
-            var loadMethod = UnityInternalsHelper.GetMethod(typeof(RuntimeSettingsBase), "Load", kFlags, new ParamsArray<Type>(typeof(bool)));
+            var loadMethod = ReflectionEx.GetMethod(typeof(RuntimeSettingsBase), "Load", kFlags, new ParamsArray<Type>(typeof(bool)));
             var genericTypeArgs = new Type[1];
 
             var invokeArgs = new object[1] { (object)false };

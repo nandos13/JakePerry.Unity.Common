@@ -13,19 +13,19 @@ namespace JakePerry.Unity
         private const BindingFlags kFlags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
         private static Type GenericInspectorType =>
-            UnityInternalsHelper.GetType(typeof(Editor).Assembly, "UnityEditor.GenericInspector");
+            ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.GenericInspector");
 
         private static Type ScriptAttributeUtilityType =>
-            UnityInternalsHelper.GetType(typeof(Editor).Assembly, "UnityEditor.ScriptAttributeUtility");
+            ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.ScriptAttributeUtility");
 
         private static Type PropertyHandlerType =>
-            UnityInternalsHelper.GetType(typeof(Editor).Assembly, "UnityEditor.PropertyHandler");
+            ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.PropertyHandler");
 
         private static MethodInfo GetHandlerMethod =>
-            UnityInternalsHelper.GetMethod(ScriptAttributeUtilityType, "GetHandler", kFlags, new ParamsArray<Type>(typeof(SerializedProperty)));
+            ReflectionEx.GetMethod(ScriptAttributeUtilityType, "GetHandler", kFlags, new ParamsArray<Type>(typeof(SerializedProperty)));
 
         private static PropertyInfo PropertyDrawerProperty =>
-            UnityInternalsHelper.GetProperty(PropertyHandlerType, "propertyDrawer", kFlags);
+            ReflectionEx.GetProperty(PropertyHandlerType, "propertyDrawer", kFlags);
 
         private static TypeCache.TypeCollection _attributedTypes;
 

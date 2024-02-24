@@ -16,22 +16,23 @@ namespace JakePerry.Unity
 
         private static readonly Dictionary<Type, RuntimeSettingsBase> _cache = new();
 
-        private static T Load<T>(bool createIfMissing)
-            where T : RuntimeSettingsBase
+        private static RuntimeSettingsBase Load_Internal(bool createIfMissing, Type type, out bool created)
         {
-            var nameAttr = typeof(T).GetCustomAttribute<RuntimeSettingsAssetNameAttribute>(true);
+            created = false;
+
+            var nameAttr = type.GetCustomAttribute<RuntimeSettingsAssetNameAttribute>(true);
 
             var assetName = nameAttr?.AssetName;
-            if (string.IsNullOrWhiteSpace(assetName)) assetName = typeof(T).Name;
+            if (string.IsNullOrWhiteSpace(assetName)) assetName = type.Name;
 
-            var asset = Resources.Load<T>($"Settings/{assetName}");
+            var asset = Resources.Load($"Settings/{assetName}", type);
 
             // If no existing asset is found, we must create a new one.
             if (asset == null)
             {
                 if (!createIfMissing) return null;
 
-                asset = CreateInstance<T>();
+                asset = CreateInstance(type);
                 asset.name = assetName;
 
 #if UNITY_EDITOR
@@ -45,9 +46,28 @@ namespace JakePerry.Unity
 
                 Debug.Log($"Created settings asset {assetName}", asset);
 #endif
+
+                created = true;
             }
 
-            return asset;
+            return (RuntimeSettingsBase)asset;
+        }
+
+        private static T Load<T>(bool createIfMissing)
+            where T : RuntimeSettingsBase
+        {
+            return (T)Load_Internal(createIfMissing, typeof(T), out _);
+        }
+
+        internal static RuntimeSettingsBase Load(bool createIfMissing, Type type, out bool created)
+        {
+            _ = type ?? throw new ArgumentNullException(nameof(type));
+            if (!typeof(RuntimeSettingsBase).IsAssignableFrom(type))
+            {
+                throw new ArgumentException(nameof(type));
+            }
+
+            return Load_Internal(createIfMissing, type, out created);
         }
 
         protected static T GetSettingsAndCache<T>(bool createIfMissing = true)

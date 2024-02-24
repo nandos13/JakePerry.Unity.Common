@@ -40,7 +40,7 @@ namespace JakePerry.Unity
         }
 
         public static GUIContent MixedValueContent =>
-            (GUIContent)UnityInternalsHelper.GetProperty(typeof(EditorGUI), "mixedValueContent", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            (GUIContent)ReflectionEx.GetProperty(typeof(EditorGUI), "mixedValueContent", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
 
         public static IDisposable DisabledBlock => GuiEnabledScope.Push(false);
 
