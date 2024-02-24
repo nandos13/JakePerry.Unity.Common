@@ -165,7 +165,7 @@ namespace JakePerry.Unity.Events
             return EditorGUIEx.CustomGuiButton(rect, id, EditorGUIEx.Styles.GetStyle("m_IconButton"), iconContent);
         }
 
-        private void DrawTarget(Rect rect, SerializedProperty property)
+        private void DrawTarget(ref Rect rect, SerializedProperty property)
         {
             var modeProp = property.FindPropertyRelative("m_targetingStaticMember");
             bool @static = modeProp.boolValue;
@@ -173,7 +173,17 @@ namespace JakePerry.Unity.Events
             var staticTargetProp = property.FindPropertyRelative("m_staticTargetType");
             var targetProp = property.FindPropertyRelative("m_target");
 
-            var typeIconRect = rect.WithWidth(rect.height);
+            var targetRect = rect;
+
+            var typeIconRect = targetRect.WithSize(targetRect.height, LineHeight);
+            targetRect = targetRect.PadLeft(typeIconRect.width + Spacing);
+
+            targetRect.height = @static
+                ? SerializeTypeDefinitionDrawer.GetPropertyHeight(staticTargetProp, false)
+                : LineHeight;
+
+            rect = rect.PadTop(targetRect.height);
+
             if (DrawTargetTypeButton(typeIconRect, @static))
             {
                 @static = !@static;
@@ -189,15 +199,13 @@ namespace JakePerry.Unity.Events
                 }
             }
 
-            var objRect = rect.PadLeft(rect.height + Spacing);
-
             if (@static)
             {
-                SerializeTypeDefinitionDrawer.DrawGUI(objRect, staticTargetProp, false);
+                SerializeTypeDefinitionDrawer.DrawGUI(targetRect, staticTargetProp, false);
             }
             else
             {
-                EditorGUI.PropertyField(objRect, targetProp, GUIContent.none);
+                EditorGUI.PropertyField(targetRect, targetProp, GUIContent.none);
             }
         }
 
@@ -399,15 +407,17 @@ namespace JakePerry.Unity.Events
             }
             else
             {
-                var topLineRect = position.WithHeight(LineHeight);
-                var targetRect = topLineRect.WithWidth(position.width * 0.38f);
-                var methodRect = topLineRect.PadLeft(targetRect.width + Spacing);
+                var leftColumnRect = position.WithWidth(position.width * 0.38f);
+                var rightColumnRect = position.PadLeft(leftColumnRect.width + Spacing);
 
                 EditorGUI.BeginChangeCheck();
 
-                DrawTarget(targetRect, property);
+                DrawTarget(ref leftColumnRect, property);
 
                 bool targetChanged = EditorGUI.EndChangeCheck();
+
+                // TODO: Does this need to calculate method content height or just pass by ref like DrawTarget?
+                var methodRect = rightColumnRect;
 
                 DrawMethod(methodRect, property, targetChanged);
             }

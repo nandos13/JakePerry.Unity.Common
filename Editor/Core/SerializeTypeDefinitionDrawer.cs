@@ -12,6 +12,8 @@ using UnityEngine.UIElements;
 
 namespace JakePerry.Unity
 {
+    // TODO: Documentation pass
+    [RequiresConstantRepaint]
     [CustomPropertyDrawer(typeof(SerializeTypeDefinition))]
     public sealed class SerializeTypeDefinitionDrawer : PropertyDrawer
     {
@@ -31,6 +33,7 @@ namespace JakePerry.Unity
             public SerializedProperty property;
             public Type type;
             public Type genericArgument;
+            public int index;
 
             public SerializedProperty typeName;
             public SerializedProperty wantsUnbound;
@@ -42,7 +45,15 @@ namespace JakePerry.Unity
             public bool hovered;
         }
 
+        private struct NameSegmentData
+        {
+            public string text;
+            public Rect rect;
+            public int propertyIndex;
+        }
+
         private static readonly ListPool<Properties> _propertiesPool = new();
+        private static readonly List<NameSegmentData> _nameSegments = new();
 
         private static readonly Dictionary<(Type, string), bool> _allowUnboundGenericsLookup = new();
         private static readonly Dictionary<Type, Type[]> _unboundArgsCache = new();
@@ -61,9 +72,10 @@ namespace JakePerry.Unity
         private static GenericMenu.MenuFunction2 _typeSelectCallback;
 
         private static GUIStyle _genericArgNameStyle;
+        private static GUIStyle _displayNameStyle;
         private static GUIStyle _groupBox;
 
-        public static GUIStyle GenericArgumentNameStyle
+        private static GUIStyle GenericArgumentNameStyle
         {
             get
             {
@@ -76,7 +88,23 @@ namespace JakePerry.Unity
             }
         }
 
-        public static GUIStyle GroupBox => _groupBox ??= new GUIStyle("GroupBox");
+        private static GUIStyle DisplayNameStyle
+        {
+            get
+            {
+                if (_displayNameStyle is null)
+                {
+                    _displayNameStyle = new GUIStyle(EditorStyles.miniLabel);
+                    _displayNameStyle.alignment = TextAnchor.UpperLeft;
+                    _displayNameStyle.hover.textColor = Color.yellow;
+                    _displayNameStyle.padding.left = 0;
+                    _displayNameStyle.padding.right = 0;
+                }
+                return _displayNameStyle;
+            }
+        }
+
+        private static GUIStyle GroupBox => _groupBox ??= new GUIStyle("GroupBox");
 
         private static Type[] GetGenericArgumentsAndCache(Type t)
         {
@@ -104,9 +132,7 @@ namespace JakePerry.Unity
             return allowUnbound;
         }
 
-        private static void ValidateSerializedData(
-            SerializedProperty property,
-            bool isNested)
+        private static void ValidateSerializedData(SerializedProperty property)
         {
             var typeNameProp = property.FindPropertyRelative("m_typeName");
             var wantsUnboundProp = property.FindPropertyRelative("m_wantsUnboundGeneric");
@@ -117,28 +143,47 @@ namespace JakePerry.Unity
             {
                 var unboundGenericArguments = GetGenericArgumentsAndCache(type);
 
-                if (_disallowUnboundGeneric && wantsUnboundProp.boolValue)
+                // If want unbound,
+                //  If not allowed, validate as is current
+                //  Else, Clear it
+                // Else, arg size must equal arguments
+                if (wantsUnboundProp.boolValue)
                 {
-                    if (!isNested)
+                    if (_disallowUnboundGeneric)
                     {
                         var errContext = property.serializedObject.targetObject;
                         Debug.LogError(
                             "SerializeTypeDefinition had unbound generic type was assigned but is not allowed. " +
                             $"Property path: {property.propertyPath}",
                             errContext);
-                    }
 
-                    wantsUnboundProp.boolValue = false;
-                    argsProp.arraySize = unboundGenericArguments.Length;
+                        wantsUnboundProp.boolValue = false;
+                        argsProp.arraySize = unboundGenericArguments.Length;
+                    }
+                    else if (argsProp.arraySize != 0)
+                    {
+                        argsProp.arraySize = 0;
+                    }
                 }
                 else
                 {
-                    // TODO: Array size isnt actually validated here?
+                    if (argsProp.arraySize != unboundGenericArguments.Length)
+                    {
+                        // Clear the array first to wipe away types that may not adhere to generic type restrictions
+                        argsProp.ClearArray();
+                        argsProp.arraySize = unboundGenericArguments.Length;
+
+                        var errContext = property.serializedObject.targetObject;
+                        Debug.LogError(
+                            $"SerializeTypeDefinition had incorrect number of generic arguments assigned. " +
+                            $"Property path: {property.propertyPath}",
+                            errContext);
+                    }
 
                     for (int i = 0; i < argsProp.arraySize; ++i)
                     {
                         var arg = argsProp.GetArrayElementAtIndex(i);
-                        ValidateSerializedData(arg, true);
+                        ValidateSerializedData(arg);
                     }
                 }
             }
@@ -188,7 +233,7 @@ namespace JakePerry.Unity
             _disallowUnboundGeneric = !allowUnboundGenericType;
             try
             {
-                ValidateSerializedData(property, false);
+                ValidateSerializedData(property);
 
                 // Standard property height, with an additional line for the resolved type name.
                 float height = GetPropertyHeight(property);
@@ -202,6 +247,7 @@ namespace JakePerry.Unity
         private static Properties BuildProperties(
             Rect position,
             SerializedProperty property,
+            ref int index,
             Type genericArgument = null)
         {
             var typeName = property.FindPropertyRelative("m_typeName");
@@ -209,6 +255,8 @@ namespace JakePerry.Unity
             var genericArgs = property.FindPropertyRelative("m_genericArgs");
 
             var t = SerializeTypeDefinition.ResolveTypeWithCache(typeName.stringValue, false, true);
+
+            int thisIndex = ++index;
 
             var genericArgProperties = ParamsArray<Properties>.Empty;
 
@@ -247,6 +295,7 @@ namespace JakePerry.Unity
                     var argProperties = BuildProperties(
                         position: argContentRect,
                         property: arg,
+                        index: ref index,
                         genericArgument: argType);
 
                     argProperties.position = argRect;
@@ -263,6 +312,7 @@ namespace JakePerry.Unity
                 property = property,
                 type = t,
                 genericArgument = genericArgument,
+                index = thisIndex,
                 typeName = typeName,
                 wantsUnbound = wantsUnbound,
                 genericArgs = genericArgs,
@@ -271,11 +321,11 @@ namespace JakePerry.Unity
             };
         }
 
-        private static bool FindHover(Properties properties, Vector2 mousePos)
+        private static bool FindHover(Properties properties, Vector2 mousePos, out int index)
         {
             foreach (var child in properties.genericArgProperties)
             {
-                if (FindHover(child, mousePos))
+                if (FindHover(child, mousePos, out index))
                 {
                     return true;
                 }
@@ -284,9 +334,11 @@ namespace JakePerry.Unity
             if (properties.position.Contains(mousePos))
             {
                 properties.hovered = true;
+                index = properties.index;
                 return true;
             }
 
+            index = -1;
             return false;
         }
 
@@ -567,12 +619,10 @@ namespace JakePerry.Unity
 
                     if (Event.current.type == EventType.Repaint)
                     {
-                        // TODO: Highlight on hover
                         bool hover = argProperties.hovered;
 
                         GroupBox.Draw(argBgRect, GUIContent.none, -1, on: false, hover: hover);
 
-                        // TODO: Find something nicer than this. GroupBox doesnt respond to hover.
                         if (hover)
                         {
                             var hoverColor = Color.white;
@@ -599,25 +649,163 @@ namespace JakePerry.Unity
             DrawTypeSelectRect(typeRect, properties.property, content);
         }
 
+        private static NameSegmentData GetNameSegment(ref Rect rect, GUIStyle style, string text, int index)
+        {
+            _tempContent.text = text;
+            style.CalcMinMaxWidth(_tempContent, out float w, out _);
+
+            var r = rect.WithWidth(w);
+            rect = rect.PadLeft(w);
+
+            return new()
+            {
+                text = text,
+                rect = r,
+                propertyIndex = index
+            };
+        }
+
+        private static void CalculateNameRects(ref Rect rect, Properties properties, GUIStyle style, List<NameSegmentData> output, int index = 0)
+        {
+            // TODO: Account for masking. If we get to the end of rect, exit early.
+
+            const string kLT = "<";
+            const string kGT = ">";
+            const string kComma = ", ";
+
+            int thisIndex = index;
+            var text = properties.type?.Name ?? properties.genericArgument.Name;
+
+            output.Add(GetNameSegment(ref rect, style, text, thisIndex));
+
+            var args = properties.genericArgProperties;
+            if (args.Length > 0)
+            {
+                output.Add(GetNameSegment(ref rect, style, kLT, thisIndex));
+
+                foreach (var child in args)
+                {
+                    if (index != thisIndex)
+                    {
+                        output.Add(GetNameSegment(ref rect, style, kComma, thisIndex));
+                    }
+
+                    ++index;
+                    CalculateNameRects(ref rect, child, style, output, index);
+                }
+
+                output.Add(GetNameSegment(ref rect, style, kGT, thisIndex));
+            }
+        }
+
+        private static bool SetHovered(Properties properties, int index, ref int i)
+        {
+            ++i;
+
+            if (index == i)
+            {
+                properties.hovered = true;
+                return true;
+            }
+
+            foreach (var child in properties.genericArgProperties)
+                if (SetHovered(child, index, ref i))
+                {
+                    return true;
+                }
+
+            return false;
+        }
+
+        private static void FindHover(List<NameSegmentData> segments, Properties root, Vector2 mousePos, out int hoverIndex)
+        {
+            // Find index of hovered name segment
+            hoverIndex = -1;
+            foreach (var o in segments)
+                if (o.rect.Contains(mousePos))
+                {
+                    hoverIndex = o.propertyIndex;
+                    break;
+                }
+
+            if (hoverIndex > -1)
+            {
+                int i = -1;
+                SetHovered(root, hoverIndex, ref i);
+            }
+        }
+
+        // TODO: Get some better colors, rename this.
+        // TODO: Perhaps also better color schemes, ie. Odd index gets blue/green,
+        //       even index gets some red, pink, purple etc.
+        private static readonly Color32[] _cc = new[]
+        {
+            new Color32(214, 157, 133, 255),
+            new Color32(156, 220, 254, 255),
+            new Color32(216, 160, 223, 255)
+        };
+
+        private static void DrawTypeName(List<NameSegmentData> segments, GUIStyle style, int hoverIndex)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+
+            _tempContent.tooltip = string.Empty;
+
+            foreach (var o in segments)
+            {
+                var c = _cc[o.propertyIndex % _cc.Length];
+                style.normal.textColor = c;
+
+                bool hover = o.propertyIndex == hoverIndex;
+
+                _tempContent.text = o.text;
+                style.Draw(o.rect, _tempContent, hover, false, false, false);
+            }
+        }
+
         internal static void DrawGUI(Rect position, SerializedProperty property, bool allowUnboundGenericType)
         {
             _disallowUnboundGeneric = !allowUnboundGenericType;
             try
             {
-                ValidateSerializedData(property, false);
+                ValidateSerializedData(property);
 
-                var resolvedTypeNameRect = position.WithHeight(LineHeight, anchorBottom: true);
+                var mousePos = Event.current.mousePosition;
+                bool mouseOverRect = position.Contains(mousePos);
+
+                var typeNameRect = position.WithHeight(LineHeight, anchorBottom: true);
                 position = position.PadBottom(LineHeight + Spacing);
 
-                var properties = BuildProperties(position, property);
+                int i = -1;
+                var properties = BuildProperties(position, property, ref i);
 
-                FindHover(properties, Event.current.mousePosition);
+                try
+                {
+                    var nameStyle = DisplayNameStyle;
 
-                // TODO: Pre-calc resolved name rects, check hovered.
+                    var r = typeNameRect;
+                    CalculateNameRects(ref r, properties, nameStyle, _nameSegments);
 
-                DrawGUI(properties);
+                    int hoverIndex = -1;
+                    if (mouseOverRect)
+                    {
+                        if (typeNameRect.Contains(mousePos))
+                        {
+                            FindHover(_nameSegments, properties, mousePos, out hoverIndex);
+                        }
+                        else if (mousePos.y < typeNameRect.y)
+                        {
+                            FindHover(properties, mousePos, out hoverIndex);
+                        }
+                    }
 
-                // TODO: Draw resolved type name here...
+                    DrawGUI(properties);
+
+                    // TODO: Consider pinging the appropriate rect if we click one of these rects.
+                    // Look at ObjectListArea.Frame to see how it handles pinging.
+                    DrawTypeName(_nameSegments, nameStyle, hoverIndex);
+                }
+                finally { _nameSegments.Clear(); }
             }
             finally { _disallowUnboundGeneric = false; }
         }
