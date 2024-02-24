@@ -48,7 +48,9 @@ namespace JakePerry.Unity
 
         private static readonly Dictionary<TypeKey, Type> _typeLookup = new();
 
-        private static readonly Dictionary<FieldPropertyKey, ValueMemberInfo> _valueMemberLookup = new();
+        private static readonly Dictionary<FieldPropertyKey, FieldInfo> _fieldLookup = new();
+
+        private static readonly Dictionary<FieldPropertyKey, PropertyInfo> _propertyLookup = new();
 
         private static readonly Dictionary<MethodKey, MethodInfo> _methodLookup = new();
 
@@ -82,7 +84,7 @@ namespace JakePerry.Unity
             return type;
         }
 
-        internal static ValueMemberInfo GetField(
+        internal static FieldInfo GetField(
             Type type,
             string fieldName,
             BindingFlags flags = BindingFlags.Instance | BindingFlags.Public)
@@ -93,23 +95,24 @@ namespace JakePerry.Unity
             if (fieldName.Length == 0) throw new ArgumentException("Empty string.", nameof(fieldName));
 
             var key = new FieldPropertyKey(type, fieldName);
-            if (!_valueMemberLookup.TryGetValue(key, out ValueMemberInfo member))
+            if (!_fieldLookup.TryGetValue(key, out FieldInfo field))
             {
-                var field = type.GetField(fieldName, flags);
-                member = new ValueMemberInfo(field);
+                field = type.GetField(fieldName, flags);
 
                 if (field is null)
                 {
+                    // TODO: Log message implies this always searches for internal.
+                    // This will need to change (along with other logs).
                     Debug.LogError($"Unable to find internal field {fieldName} for declaring type {type}! Unity version: {Application.unityVersion}");
                 }
 
-                _valueMemberLookup[key] = member;
+                _fieldLookup[key] = field;
             }
 
-            return member;
+            return field;
         }
 
-        internal static ValueMemberInfo GetProperty(
+        internal static PropertyInfo GetProperty(
             Type type,
             string propertyName,
             BindingFlags flags = BindingFlags.Instance | BindingFlags.Public)
@@ -120,20 +123,19 @@ namespace JakePerry.Unity
             if (propertyName.Length == 0) throw new ArgumentException("Empty string.", nameof(propertyName));
 
             var key = new FieldPropertyKey(type, propertyName);
-            if (!_valueMemberLookup.TryGetValue(key, out ValueMemberInfo member))
+            if (!_propertyLookup.TryGetValue(key, out PropertyInfo property))
             {
-                var property = type.GetProperty(propertyName, flags);
-                member = new ValueMemberInfo(property);
+                property = type.GetProperty(propertyName, flags);
 
                 if (property is null)
                 {
                     Debug.LogError($"Unable to find internal property {propertyName} for declaring type {type}! Unity version: {Application.unityVersion}");
                 }
 
-                _valueMemberLookup[key] = member;
+                _propertyLookup[key] = property;
             }
 
-            return member;
+            return property;
         }
 
         internal static MethodInfo GetMethod(
