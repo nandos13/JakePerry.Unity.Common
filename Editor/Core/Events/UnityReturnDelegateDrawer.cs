@@ -81,7 +81,7 @@ namespace JakePerry.Unity.Events
         private void DrawHeader(Rect rect, State state, UnityReturnDelegateBase dummy, GUIContent label)
         {
             var backgroundRect = rect;
-            rect = rect.Pad(left: 6, right: 10);
+            rect = rect.PadLeft(6);
 
             var editorBtnLabel = new GUIContent("Editor");
             var runtimeBtnLabel = new GUIContent("Runtime");
@@ -91,19 +91,39 @@ namespace JakePerry.Unity.Events
             tabLabelStyle.CalcMinMaxWidth(editorBtnLabel, out float editorBtnSize, out _);
             tabLabelStyle.CalcMinMaxWidth(runtimeBtnLabel, out float runtimeBtnSize, out _);
 
-            var editorBtnRect = rect.PadLeft(rect.width - editorBtnSize);
+            var runtimeBtnRect = rect.WithWidth(runtimeBtnSize, anchorRight: true);
+            rect = rect.PadRight(runtimeBtnSize);
 
-            if (Event.current.type == EventType.Repaint)
+            var editorBtnRect = rect.WithWidth(editorBtnSize, anchorRight: true);
+            rect = rect.PadRight(editorBtnSize);
+
+            var evt = Event.current;
+            var mousePos = evt.mousePosition;
+            bool hoverRuntime = runtimeBtnRect.Contains(mousePos);
+            bool hoverEditor = editorBtnRect.Contains(mousePos);
+
+            if (evt.type == EventType.Repaint)
             {
                 var headerStyle = ReorderableList.defaultBehaviours.headerBackground;
                 headerStyle.Draw(backgroundRect, isHover: false, isActive: false, on: false, hasKeyboardFocus: false);
 
-                // TODO: These tabs arent drawing despite using the same style as unitys internal code.. Investigate further.
                 var tabStyle = EditorGUIEx.Styles.DockArea.DragTab;
-                editorBtnRect.y += tabStyle.margin.top;
-                tabStyle.Draw(editorBtnRect, isHover: false, isActive: false, on: false, hasKeyboardFocus: false);
 
+                bool viewingEditor = state.viewingEditorSettings;
+
+                runtimeBtnRect.y += tabStyle.margin.top;
+                tabStyle.Draw(runtimeBtnRect, isHover: hoverRuntime, isActive: !viewingEditor, on: false, hasKeyboardFocus: false);
+
+                editorBtnRect.y += tabStyle.margin.top;
+                tabStyle.Draw(editorBtnRect, isHover: hoverEditor, isActive: viewingEditor, on: false, hasKeyboardFocus: false);
+
+                EditorGUI.LabelField(runtimeBtnRect, runtimeBtnLabel, tabLabelStyle);
                 EditorGUI.LabelField(editorBtnRect, editorBtnLabel, tabLabelStyle);
+            }
+            else if (evt.type == EventType.MouseUp)
+            {
+                if (hoverRuntime) state.viewingEditorSettings = false;
+                else if (hoverEditor) state.viewingEditorSettings = true;
             }
 
             rect.width -= editorBtnRect.width + 20f;
@@ -408,7 +428,7 @@ namespace JakePerry.Unity.Events
             else
             {
                 var leftColumnRect = position.WithWidth(position.width * 0.38f);
-                var rightColumnRect = position.PadLeft(leftColumnRect.width + Spacing);
+                var rightColumnRect = position.PadLeft(leftColumnRect.width + Spacing + Spacing);
 
                 EditorGUI.BeginChangeCheck();
 

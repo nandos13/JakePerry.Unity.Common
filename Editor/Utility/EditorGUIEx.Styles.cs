@@ -17,7 +17,7 @@ namespace JakePerry.Unity
 
                 private static GUIStyle GetStyleFromField(string fieldName)
                 {
-                    var field = ReflectionEx.GetField(DockAreaStylesType, "tabLabel", kDockStyleFlags);
+                    var field = ReflectionEx.GetField(DockAreaStylesType, fieldName, kDockStyleFlags);
                     return (GUIStyle)field.GetValue(null);
                 }
 
