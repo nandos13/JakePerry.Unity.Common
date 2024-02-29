@@ -31,6 +31,13 @@ namespace JakePerry.Unity.Events
         [SerializeField]
         private byte m_policy;
 
+#if UNITY_EDITOR
+
+        [SerializeField]
+        private byte m_editorBehaviour;
+
+#endif // UNITY_EDITOR
+
         private bool m_dirty = true;
         private RuntimeInvocableCall m_call;
 
@@ -55,7 +62,7 @@ namespace JakePerry.Unity.Events
             }
         }
 
-        protected abstract Type[] GetEventDefinedInvocationArgumentTypes();
+        internal protected abstract Type[] GetEventDefinedInvocationArgumentTypes();
         internal abstract RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method);
 
         private static MethodInfo GetValidMethodInfo(Type objectType, string methodName, Type returnType, Type[] argTypes)

@@ -15,7 +15,7 @@ namespace JakePerry.Unity.Events
             return new InvokableCallWithReturn<TResult>(target, method);
         }
 
-        protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
+        internal protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
         {
             return Array.Empty<Type>();
         }
@@ -50,7 +50,7 @@ namespace JakePerry.Unity.Events
             return new InvokableCallWithReturn<T0, TResult>(target, method);
         }
 
-        protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
+        internal protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
         {
             return new Type[1] { typeof(T0) };
         }
@@ -93,7 +93,7 @@ namespace JakePerry.Unity.Events
             return new InvokableCallWithReturn<T0, T1, TResult>(target, method);
         }
 
-        protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
+        internal protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
         {
             return new Type[2] { typeof(T0), typeof(T1) };
         }
@@ -137,7 +137,7 @@ namespace JakePerry.Unity.Events
             return new InvokableCallWithReturn<T0, T1, T2, TResult>(target, method);
         }
 
-        protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
+        internal protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
         {
             return new Type[3] { typeof(T0), typeof(T1), typeof(T2) };
         }
@@ -182,7 +182,7 @@ namespace JakePerry.Unity.Events
             return new InvokableCallWithReturn<T0, T1, T2, T3, TResult>(target, method);
         }
 
-        protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
+        internal protected sealed override Type[] GetEventDefinedInvocationArgumentTypes()
         {
             return new Type[4] { typeof(T0), typeof(T1), typeof(T2), typeof(T3) };
         }

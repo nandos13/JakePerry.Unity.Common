@@ -15,22 +15,27 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
-    internal sealed class IntArgument : InvocationArgument
+    internal abstract class StructArgument<T> : InvocationArgument
+        where T : struct
+    {
+        internal sealed override Type ArgumentType => typeof(T);
+    }
+
+    [Serializable]
+    internal sealed class IntArgument : StructArgument<int>
     {
         [SerializeField]
         private int m_value;
 
-        internal override Type ArgumentType => typeof(int);
         internal override object ArgumentValue => (object)m_value;
     }
 
     [Serializable]
-    internal sealed class FloatArgument : InvocationArgument
+    internal sealed class FloatArgument : StructArgument<float>
     {
         [SerializeField]
         private float m_value;
 
-        internal override Type ArgumentType => typeof(float);
         internal override object ArgumentValue => (object)m_value;
     }
 
@@ -45,12 +50,11 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
-    internal sealed class BoolArgument : InvocationArgument
+    internal sealed class BoolArgument : StructArgument<bool>
     {
         [SerializeField]
         private bool m_value;
 
-        internal override Type ArgumentType => typeof(bool);
         internal override object ArgumentValue => (object)m_value;
     }
 

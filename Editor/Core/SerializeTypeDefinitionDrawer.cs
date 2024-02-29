@@ -57,8 +57,6 @@ namespace JakePerry.Unity
         private static readonly Dictionary<(Type, string), bool> _allowUnboundGenericsLookup = new();
         private static readonly Dictionary<Type, Type[]> _unboundArgsCache = new();
 
-        private static readonly GUIContent _tempContent = new();
-
         /// <summary>
         /// Indicates whether unbound generics are explicitly disallowed for the
         /// current serialized data.
@@ -264,10 +262,11 @@ namespace JakePerry.Unity
             {
                 var unboundGenericArguments = GetGenericArgumentsAndCache(t);
 
+                var c = TempContent;
                 foreach (var argType in unboundGenericArguments)
                 {
-                    _tempContent.text = argType.Name;
-                    GenericArgumentNameStyle.CalcMinMaxWidth(_tempContent, out float nWidth, out _);
+                    c.text = argType.Name;
+                    GenericArgumentNameStyle.CalcMinMaxWidth(c, out float nWidth, out _);
 
                     genericArgNamesWidth = Mathf.Max(genericArgNamesWidth, nWidth);
                 }
@@ -486,7 +485,7 @@ namespace JakePerry.Unity
             menu.AddItem(new GUIContent(kBuiltInsPath + "Native-size integers"), false, null);
 
             AddBuiltInType(menu, property, "nint (IntPtr)", typeof(IntPtr));
-            AddBuiltInType(menu, property, "unint (UIntPtr)", typeof(UIntPtr));
+            AddBuiltInType(menu, property, "nuint (UIntPtr)", typeof(UIntPtr));
 
             menu.AddItem(new GUIContent(kBuiltInsPath + "Others"), false, null);
 
@@ -620,37 +619,35 @@ namespace JakePerry.Unity
                         EditorGUI.DrawRect(argLineRect, Color.white);
 
                         var argName = argProperties.genericArgument.Name;
-                        _tempContent.text = argName;
-                        _tempContent.tooltip = argName;
+                        var c = GetTempContent(argName, argName);
 
-                        GenericArgumentNameStyle.Draw(nameRect, _tempContent, hover, false, false, false);
+                        GenericArgumentNameStyle.Draw(nameRect, c, hover, false, false, false);
                     }
 
                     DrawGUI(argProperties);
                 }
             }
 
-            _tempContent.tooltip = string.Empty;
+            string typeText;
             if (properties.type is null)
             {
                 var serializedTypeString = properties.typeName.stringValue;
 
-                _tempContent.text = !string.IsNullOrEmpty(serializedTypeString)
+                typeText = !string.IsNullOrEmpty(serializedTypeString)
                     ? $"<Missing Type> {serializedTypeString}"
                     : "<None>";
             }
             else
             {
-                _tempContent.text = properties.type.FullName;
+                typeText = properties.type.FullName;
             }
 
-            DrawTypeSelectRect(typeRect, properties.property, _tempContent);
+            DrawTypeSelectRect(typeRect, properties.property, GetTempContent(typeText));
         }
 
         private static NameSegmentData GetNameSegment(ref Rect rect, GUIStyle style, string text, int index)
         {
-            _tempContent.text = text;
-            style.CalcMinMaxWidth(_tempContent, out float w, out _);
+            style.CalcMinMaxWidth(GetTempContent(text), out float w, out _);
 
             w = Mathf.Min(w, rect.width);
 
@@ -760,8 +757,6 @@ namespace JakePerry.Unity
         {
             if (Event.current.type != EventType.Repaint) return;
 
-            _tempContent.tooltip = string.Empty;
-
             foreach (var o in segments)
             {
                 var c = _cc[o.propertyIndex % _cc.Length];
@@ -769,8 +764,7 @@ namespace JakePerry.Unity
 
                 bool hover = o.propertyIndex == hoverIndex;
 
-                _tempContent.text = o.text;
-                style.Draw(o.rect, _tempContent, hover, false, false, false);
+                style.Draw(o.rect, GetTempContent(o.text), hover, false, false, false);
             }
         }
 
