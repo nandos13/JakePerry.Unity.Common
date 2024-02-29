@@ -297,8 +297,7 @@ namespace JakePerry.Unity.Events
             GUIContent iconContent;
             if (@static)
             {
-                // TODO: Is this better if it's a lightning bolt icon, etc? Find/make something more appropriate
-                iconContent = EditorGUIUtility.IconContent("d_GameObject Icon");
+                iconContent = new GUIContent(EditorGUIEx.Icons.GameObjectStatic);
                 iconContent.tooltip = "Targeting static members. Click to toggle.";
             }
             else
