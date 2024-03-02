@@ -366,7 +366,7 @@ namespace JakePerry.Unity
                 }
                 while (t.IsNested);
 
-                return StringBuilderCache.GetStringAndRelease(ref sb);
+                return StringBuilderCache.GetStringAndRelease(sb);
             }
 
             return t.Name;

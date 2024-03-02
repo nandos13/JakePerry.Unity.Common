@@ -27,16 +27,10 @@ namespace JakePerry.Unity
 
         public static string GetHierarchyPath(this Transform transform, string delimeter = "/")
         {
-            string result;
-
             var sb = StringBuilderCache.Acquire();
-            try
-            {
-                GetHierarchyPath(transform, sb, delimeter);
-            }
-            finally { result = StringBuilderCache.GetStringAndRelease(ref sb); }
+            GetHierarchyPath(transform, sb, delimeter);
 
-            return result;
+            return StringBuilderCache.GetStringAndRelease(sb); ;
         }
     }
 }

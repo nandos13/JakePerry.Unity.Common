@@ -166,7 +166,7 @@ namespace JakePerry.Unity.Events
             var sb = StringBuilderCache.Acquire();
             GetArgumentString(argTypes, sb);
 
-            return StringBuilderCache.GetStringAndRelease(ref sb);
+            return StringBuilderCache.GetStringAndRelease(sb);
         }
 
         private void DrawHeader(Rect rect, State state, UnityReturnDelegateBase dummy, GUIContent label)
@@ -398,7 +398,7 @@ namespace JakePerry.Unity.Events
             sb.Append(member.Name);
             GetArgumentString(paramTypes, sb);
 
-            return StringBuilderCache.GetStringAndRelease(ref sb);
+            return StringBuilderCache.GetStringAndRelease(sb);
         }
 
         private GenericMenu BuildStaticMemberPopupList(Type declaringType, SerializedProperty property)
@@ -478,7 +478,7 @@ namespace JakePerry.Unity.Events
 
                 menu.AddItem(new GUIContent(sb.ToString()), false, null);
 
-                StringBuilderCache.Release(ref sb);
+                StringBuilderCache.Release(sb);
 
                 foreach (var m in list2)
                 {
@@ -620,7 +620,7 @@ namespace JakePerry.Unity.Events
                     }
                 }
 
-                c = new GUIContent(StringBuilderCache.GetStringAndRelease(ref sb));
+                c = new GUIContent(StringBuilderCache.GetStringAndRelease(sb));
             }
 
             // TODO: Have an icon indicating if the current assigned method is dynamic or static args.
