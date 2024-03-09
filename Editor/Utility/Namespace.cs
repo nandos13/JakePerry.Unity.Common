@@ -9,6 +9,7 @@ namespace JakePerry.Unity
     /// Representation of a namespace.
     /// </summary>
     public readonly struct Namespace :
+        IComparable<Namespace>,
         IEnumerable,
         IEnumerable<Namespace>,
         IEquatable<Namespace>
@@ -147,6 +148,11 @@ namespace JakePerry.Unity
             m_name = name;
             m_full = full;
             m_children = children;
+        }
+
+        public int CompareTo(Namespace other)
+        {
+            return StringComparer.Ordinal.Compare(FullName, other.FullName);
         }
 
         /// <summary>

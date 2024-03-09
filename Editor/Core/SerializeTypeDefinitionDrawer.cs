@@ -372,13 +372,8 @@ namespace JakePerry.Unity
             return t.Name;
         }
 
-        private static void OnSelectType(object e)
+        private static void AssignType(Type type, SerializedProperty property)
         {
-            var args = (TypeSelectArgs)e;
-
-            var type = args.type;
-            var property = args.property;
-
             var typeNameProp = property.FindPropertyRelative("m_typeName");
             var wantsUnboundProp = property.FindPropertyRelative("m_wantsUnboundGeneric");
             var argsProp = property.FindPropertyRelative("m_genericArgs");
@@ -407,8 +402,6 @@ namespace JakePerry.Unity
                 typeNameProp.stringValue = string.Empty;
                 wantsUnboundProp.boolValue = false;
             }
-
-            property.serializedObject.ApplyModifiedProperties();
         }
 
         private static void AddNamespaceToMenu(
@@ -454,73 +447,29 @@ namespace JakePerry.Unity
             }
         }
 
-        private static void AddBuiltInType(GenericMenu menu, SerializedProperty property, string name, Type type)
+        private static void DrawTypeSelectRect(Rect position, SerializedProperty property, GUIContent content, Type t)
         {
-            var args = new TypeSelectArgs() { property = property, type = type };
-            menu.AddItem(new GUIContent(kBuiltInsPath + name), false, _typeSelectCallback, args);
-        }
+            const string kHint = "SerializeTypeDefinitionDrawer.TypeSelectorButton";
 
-        private static void AddBuiltInTypes(GenericMenu menu, SerializedProperty property)
-        {
-            AddBuiltInType(menu, property, "bool", typeof(bool));
-            AddBuiltInType(menu, property, "byte", typeof(byte));
-            AddBuiltInType(menu, property, "sbyte", typeof(sbyte));
-            AddBuiltInType(menu, property, "char", typeof(char));
-
-            menu.AddItem(new GUIContent(kBuiltInsPath + "Floating point numbers"), false, null);
-
-            AddBuiltInType(menu, property, "float (Single)", typeof(float));
-            AddBuiltInType(menu, property, "double", typeof(double));
-            AddBuiltInType(menu, property, "decimal", typeof(decimal));
-
-            menu.AddItem(new GUIContent(kBuiltInsPath + "Integers"), false, null);
-
-            AddBuiltInType(menu, property, "short (Int16)", typeof(short));
-            AddBuiltInType(menu, property, "int (Int32)", typeof(int));
-            AddBuiltInType(menu, property, "long (Int64)", typeof(long));
-            AddBuiltInType(menu, property, "ushort (UInt16)", typeof(ushort));
-            AddBuiltInType(menu, property, "uint (UInt32)", typeof(uint));
-            AddBuiltInType(menu, property, "ulong (UInt64)", typeof(ulong));
-
-            menu.AddItem(new GUIContent(kBuiltInsPath + "Native-size integers"), false, null);
-
-            AddBuiltInType(menu, property, "nint (IntPtr)", typeof(IntPtr));
-            AddBuiltInType(menu, property, "nuint (UIntPtr)", typeof(UIntPtr));
-
-            menu.AddItem(new GUIContent(kBuiltInsPath + "Others"), false, null);
-
-            AddBuiltInType(menu, property, "string", typeof(string));
-            AddBuiltInType(menu, property, "object", typeof(object));
-        }
-
-        private static GenericMenu BuildTypesMenu(SerializedProperty property)
-        {
-            // TODO: Editor assemblies should be ignored if the serialized data belongs to runtime?
-
-            var menu = new GenericMenu();
-
-            _typeSelectCallback ??= OnSelectType;
-
-            menu.AddItem(new GUIContent("None"), false, _typeSelectCallback, null);
-            menu.AddSeparator(string.Empty);
-
-            AddBuiltInTypes(menu, property);
-            menu.AddSeparator(string.Empty);
-
-            var rootNamespace = NamespaceCache.GetGlobalNamespace();
-            AddNamespaceToMenu(menu, string.Empty, rootNamespace, property);
-
-            return menu;
-        }
-
-        private static void DrawTypeSelectRect(Rect position, SerializedProperty property, GUIContent content)
-        {
             // TODO: Address performance issues with generic menu creation.
             // This type may benefit from a new window like the object selector.
 
+            int id = GUIUtility.GetControlID(kHint.GetHashCode(), FocusType.Keyboard, position);
+
+            var current = Event.current;
+            if (current.type == EventType.ExecuteCommand &&
+                StringComparer.Ordinal.Equals(current.commandName, TypeSelector.Commands.SelectionUpdated) &&
+                TypeSelector.ControlID == id)
+            {
+                AssignType(TypeSelector.SelectedType, property);
+
+                property.serializedObject.ApplyModifiedProperties();
+                GUIUtility.ExitGUI();
+            }
+
             if (EditorGUI.DropdownButton(position, content, FocusType.Passive, EditorStyles.popup))
             {
-                BuildTypesMenu(property).DropDown(position);
+                TypeSelector.OpenTypeSelector(id, t);
             }
         }
 
@@ -642,7 +591,7 @@ namespace JakePerry.Unity
                 typeText = properties.type.FullName;
             }
 
-            DrawTypeSelectRect(typeRect, properties.property, GetTempContent(typeText));
+            DrawTypeSelectRect(typeRect, properties.property, GetTempContent(typeText), properties.type);
         }
 
         private static NameSegmentData GetNameSegment(ref Rect rect, GUIStyle style, string text, int index)

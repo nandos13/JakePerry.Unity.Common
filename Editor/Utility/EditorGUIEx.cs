@@ -133,6 +133,11 @@ namespace JakePerry.Unity
             }
         }
 
+        public static Vector2 GetControlSize(GUIStyle style, GUIContent content)
+        {
+            return style.CalcScreenSize(style.CalcSize(content));
+        }
+
         public static Texture2D GetIconForGUI(string iconGuid)
         {
             return AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(iconGuid));

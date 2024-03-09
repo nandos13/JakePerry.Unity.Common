@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.Callbacks;
@@ -47,7 +46,7 @@ namespace JakePerry.Unity
         private static Namespace ConsolidateData(Dictionary<string, List<NamespaceData>> dict, NamespaceData data)
         {
             List<Namespace> children = null;
-            if (dict.TryGetValue(data.fullNamespace, out var list))
+            if (dict.TryGetValue(data.fullNamespace, out var list) && list.Count > 0)
             {
                 children = new List<Namespace>(capacity: list.Count);
                 foreach (var c in list)
@@ -79,6 +78,9 @@ namespace JakePerry.Unity
 
             var dict = new Dictionary<string, List<NamespaceData>>(StringComparer.Ordinal);
 
+            var root = new NamespaceData { thisNamespace = string.Empty, fullNamespace = string.Empty };
+            dict[string.Empty] = new List<NamespaceData>(capacity: 64);
+
             foreach (var t in TypeCache.GetTypesDerivedFrom(typeof(object)))
             {
                 string @namespace = t.Namespace;
@@ -93,7 +95,7 @@ namespace JakePerry.Unity
                     continue;
                 }
 
-                var root = new NamespaceData { thisNamespace = string.Empty, fullNamespace = string.Empty };
+                var node = root;
 
                 int segmentStart = 0;
                 while (segmentStart < @namespace.Length)
@@ -104,18 +106,14 @@ namespace JakePerry.Unity
                     int segmentLength = segmentEnd - segmentStart;
                     var span = @namespace.AsSpan(segmentStart, segmentLength);
 
-                    if (!dict.TryGetValue(root.fullNamespace, out List<NamespaceData> list))
-                    {
-                        list = new(capacity: 8);
-                        dict[root.fullNamespace] = list;
-                    }
+                    var list = dict[node.fullNamespace];
 
                     if (!TryFindMatch(list, span, out NamespaceData match))
                     {
                         string thisNamespace = span.ToString();
                         string fullNamespace;
 
-                        if (root.fullNamespace.Length == 0)
+                        if (node.fullNamespace.Length == 0)
                         {
                             fullNamespace = thisNamespace;
                         }
@@ -130,9 +128,11 @@ namespace JakePerry.Unity
 
                         match = new NamespaceData { thisNamespace = thisNamespace, fullNamespace = fullNamespace };
                         list.Add(match);
+
+                        dict[fullNamespace] = new(capacity: 8);
                     }
 
-                    root = match;
+                    node = match;
 
                     segmentStart = segmentEnd + 1;
                 }
@@ -143,7 +143,7 @@ namespace JakePerry.Unity
                 l.Sort(comparison: CompareData);
             }
 
-            _root = ConsolidateData(dict, new NamespaceData { thisNamespace = string.Empty, fullNamespace = string.Empty });
+            _root = ConsolidateData(dict, root);
 
             _dirty = false;
 
@@ -155,6 +155,40 @@ namespace JakePerry.Unity
         {
             BuildCacheIfRequired();
             return _root;
+        }
+
+        public static Namespace GetNamespace(Type type)
+        {
+            _ = type ?? throw new ArgumentNullException(nameof(type));
+
+            BuildCacheIfRequired();
+
+            string match = type.Namespace;
+            if (string.IsNullOrEmpty(match))
+            {
+                return _root;
+            }
+
+            var node = _root;
+
+            // TODO: This can be sped up using spans, just check name instead of fullname
+        CHECK_NODE_CHILDREN:
+            for (int i = node.NestedCount - 1; i >= 0; --i)
+            {
+                var child = node.GetNestedNamespace(i);
+                if (match.StartsWith(child.FullName, StringComparison.Ordinal))
+                {
+                    node = child;
+                    goto CHECK_NODE_CHILDREN;
+                }
+            }
+
+            if (StringComparer.Ordinal.Equals(node.FullName, match))
+            {
+                return node;
+            }
+
+            throw new InvalidOperationException();
         }
 
         public static bool TryGetNamespace(string name, out Namespace @namespace)

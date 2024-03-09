@@ -5,8 +5,13 @@ using UnityEditor.Callbacks;
 
 namespace JakePerry.Unity
 {
+    // TODO: Consider an attribute parameter to specify a bool method/property for whether the property
+    // actually needs to be repainted. ie. the serializetypedefinition drawer only needs to constant
+    // repaint when the mouse is over the total rect (or maybe a frame after it leaves too).
+
     /// <summary>
-    /// Utility class that allows constant repainting of a <see cref="PropertyDrawer"/> type.
+    /// Utility class that allows constant repainting of a <see cref="PropertyDrawer"/>
+    /// or <see cref="EditorWindow"/> type.
     /// </summary>
     internal static class ConstantPropertyRepaintUtility
     {
@@ -72,9 +77,16 @@ namespace JakePerry.Unity
                         if (_attributedTypes.Contains(propertyDrawer.GetType()))
                         {
                             editor.Repaint();
+                            break;
                         }
                     }
                 }
+            }
+
+            var focusWindow = EditorWindow.focusedWindow;
+            if (focusWindow != null && _attributedTypes.Contains(focusWindow.GetType()))
+            {
+                focusWindow.Repaint();
             }
 
             ReflectionEx.ReturnArray(args);
