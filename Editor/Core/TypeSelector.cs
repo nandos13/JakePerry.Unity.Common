@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using UnityEditor;
 using UnityEditor.AnimatedValues;
@@ -17,24 +19,25 @@ namespace JakePerry.Unity
     [RequiresConstantRepaint]
     public sealed class TypeSelector : AbstractSelectorWindow
     {
-        /// <summary>
-        /// Denotes all Unity GUI command names used by the TypeSelector.
-        /// </summary>
-        public static class Commands
-        {
-            public const string SelectionUpdated = "TypeSelector_SelectedTypeUpdated";
-        }
-
         private const float kIndent = 30;
         private const float kFoldoutSize = 20;
 
-        private const byte kSelUpdateId = 1;
+        private const float kHoverLerpTerm = 0.3f;
+
+        /// <summary>
+        /// Denotes the name of the Unity GUI command sent when a type is selected.
+        /// </summary>
+        public const string SelectionUpdatedCommand = "TypeSelector_SelectedTypeUpdated";
+
+        private enum FilterState { None = 0, Some = 1, All = 2 }
 
         private sealed class Map
         {
             public readonly Namespace @namespace;
             public readonly List<Type> types = new();
             public readonly AnimBool visible = new(false);
+            public FilterState filterState;
+
             public Map(Namespace n) { @namespace = n; }
         }
 
@@ -61,12 +64,8 @@ namespace JakePerry.Unity
             (typeof(object), "object")
         };
 
-        private static readonly Color32 _namespaceBackgroundColor = new Color32(40, 40, 40, 255);
-        // TODO: Use this color for built in types.
-        private static readonly Color32 _builtInAliasColor = new Color32(86, 156, 214, 255);
-
         private static Type _selectedType;
-        private static byte _commandState;
+        private static bool _invokingTypeSelectCommand;
 
         private readonly List<Map> m_typeMap = new();
         private readonly Map m_builtInMap = new(default);
@@ -79,18 +78,26 @@ namespace JakePerry.Unity
 
         private Type m_currentSelection;
 
+        // TODO: Consider adding a config file for specifying render colors?
+        private static Color32 DefaultAliasColor => new Color32(86, 156, 214, 255);
+        private static Color32 DefaultClassColor => new Color32(78, 201, 176, 255);
+        private static Color32 DefaultInterfaceColor => new Color32(184, 215, 163, 255);
+        private static Color32 DefaultStructColor => new Color32(134, 198, 145, 255);
+        private static Color32 NamespaceBackgroundColor => new Color32(40, 40, 40, 255);
+        private static Color32 White32 => new Color32(255, 255, 255, 255);
+
         // TODO: Documentation
         public static Type SelectedType
         {
             get
             {
-                if (_commandState == kSelUpdateId)
+                if (_invokingTypeSelectCommand)
                 {
                     return _selectedType;
                 }
                 throw new InvalidOperationException(
                     "No type selection in progress. This property should only be accessed during the "
-                    + Commands.SelectionUpdated + " command GUI event.");
+                    + SelectionUpdatedCommand + " command GUI event.");
             }
         }
 
@@ -216,6 +223,17 @@ namespace JakePerry.Unity
             return result;
         }
 
+        private static bool IgnoreType(Type t)
+        {
+            if (t.GetCustomAttribute<CompilerGeneratedAttribute>() != null)
+                return true;
+
+            if (t.FullName.Contains("<PrivateImplementationDetails>", StringComparison.Ordinal))
+                return true;
+
+            return false;
+        }
+
         private bool FindMap(Namespace @namespace, out Map map)
         {
             foreach (var m in m_typeMap)
@@ -241,11 +259,11 @@ namespace JakePerry.Unity
             try
             {
                 _selectedType = m_currentSelection;
-                _commandState = kSelUpdateId;
+                _invokingTypeSelectCommand = true;
 
-                SendEvent(Commands.SelectionUpdated);
+                SendEvent(SelectionUpdatedCommand);
             }
-            finally { _commandState = 0; _selectedType = null; }
+            finally { _invokingTypeSelectCommand = false; _selectedType = null; }
 
             Close();
             GUIUtility.ExitGUI();
@@ -259,9 +277,14 @@ namespace JakePerry.Unity
             var rect = EditorGUILayout.GetControlRect(false, style.CalcHeight(content, Screen.width), style);
 
             var current = Event.current;
+
+            bool hover = rect.Contains(current.mousePosition);
             if (current.type == EventType.Repaint)
             {
-                EditorGUI.DrawRect(rect, _namespaceBackgroundColor);
+                var color = NamespaceBackgroundColor;
+                if (hover) color = Color32.Lerp(color, White32, kHoverLerpTerm);
+
+                EditorGUI.DrawRect(rect, color);
             }
 
             rect = rect.PadLeft(indentLevel * kIndent);
@@ -269,7 +292,6 @@ namespace JakePerry.Unity
             var foldoutRect = rect.WithSize(kFoldoutSize, kFoldoutSize);
             rect = rect.PadLeft(foldoutRect.width + Spacing);
 
-            bool hover = rect.Contains(current.mousePosition);
             if (current.type == EventType.Repaint)
             {
                 // TODO: Nicer foldout visuals
@@ -335,18 +357,23 @@ namespace JakePerry.Unity
                 var bgStyle = ReorderableList.defaultBehaviours.elementBackground;
                 bgStyle.Draw(rowRect, GUIContent.none, hover, active, active, false);
 
+                Color32 color32;
                 if (forceColor.HasValue)
                 {
-                    m_typeNameStyle.normal.textColor = forceColor.Value;
+                    color32 = forceColor.Value;
+                }
+                else if (t is not null)
+                {
+                    if (t.IsValueType) color32 = DefaultStructColor;
+                    else color32 = t.IsInterface ? DefaultInterfaceColor : DefaultClassColor;
                 }
                 else
                 {
-                    // TODO: Colors for class/struct/interface
-                    m_typeNameStyle.normal.textColor = Color.red;
+                    color32 = new Color32(200, 200, 200, 255);
                 }
 
-                m_typeNameStyle.hover.textColor = Color.Lerp(m_typeNameStyle.normal.textColor, Color.white, 0.4f);
-                m_typeNameStyle.active.textColor = m_typeNameStyle.normal.textColor;
+                m_typeNameStyle.normal.textColor = m_typeNameStyle.active.textColor = color32;
+                m_typeNameStyle.hover.textColor = Color.Lerp(color32, White32, kHoverLerpTerm);
 
                 content.text = name;
                 m_typeNameStyle.Draw(rect, content, hover, active, false, false);
@@ -395,7 +422,7 @@ namespace JakePerry.Unity
                     }
                 }
 
-                Color32? forceColor = map == m_builtInMap ? _builtInAliasColor : null;
+                Color32? forceColor = map == m_builtInMap ? DefaultAliasColor : null;
 
                 foreach (var t in map.types)
                 {
@@ -406,23 +433,71 @@ namespace JakePerry.Unity
             }
         }
 
+        private void DrawMap(Map map, int indentLevel)
+        {
+            if (map.types.Count == 0)
+            {
+                bool anyNamespacesMapped = false;
+                for (int i = 0; i < map.@namespace.NestedCount; ++i)
+                    if (FindMap(map.@namespace.GetNestedNamespace(i), out _))
+                    {
+                        anyNamespacesMapped = true;
+                        break;
+                    }
+
+                if (!anyNamespacesMapped) return;
+            }
+
+            string name, full = null;
+            if (map == m_builtInMap) name = "Built in";
+            else if (map == m_globalNamespaceMap) name = "Global";
+            else
+            {
+                name = map.@namespace.Name;
+                full = map.@namespace.FullName;
+            }
+
+            var visible = map.visible;
+
+            DrawNamespaceHeader(name, full, visible, indentLevel);
+
+            if (visible.isAnimating || visible.value)
+            {
+                EditorGUILayout.BeginFadeGroup(visible.faded);
+
+                for (int i = 0; i < map.@namespace.NestedCount; ++i)
+                {
+                    var child = map.@namespace.GetNestedNamespace(i);
+                    if (FindMap(child, out Map other))
+                    {
+                        DrawMap(other, indentLevel + 1);
+                    }
+                }
+
+                Color32? forceColor = map == m_builtInMap ? DefaultAliasColor : null;
+
+                foreach (var t in map.types)
+                {
+                    DrawType(t, indentLevel, forceColor);
+                }
+
+                EditorGUILayout.EndFadeGroup();
+            }
+        }
+
+        protected sealed override void OnSearchFilterChanged()
+        {
+            base.OnSearchFilterChanged();
+
+            // todo
+        }
+
         protected sealed override void DrawBodyGUI()
         {
-            // TODO: Color for None type
-            DrawType(null, 0, forceColor: Color.green);
+            DrawType(null, 0);
 
-            if (m_builtInMap.types.Count > 0)
-            {
-                DrawNamespaceHeader("Built In Types", null, m_builtInMap.visible, 0);
-                DrawTypes(m_builtInMap, 0);
-            }
-
-            if (m_globalNamespaceMap.types.Count > 0 ||
-                m_globalNamespaceMap.@namespace.NestedCount > 0)
-            {
-                DrawNamespaceHeader("Global", null, m_globalNamespaceMap.visible, 0);
-                DrawTypes(m_globalNamespaceMap, 0);
-            }
+            DrawMap(m_builtInMap, 0);
+            DrawMap(m_globalNamespaceMap, 0);
         }
 
         private void Setup(Type current)
@@ -430,13 +505,21 @@ namespace JakePerry.Unity
             m_typeMap.Clear();
             m_builtInMap.types.Clear();
 
+            var typesInGlobalNamespace = new List<Type>();
+
             foreach (var type in TypeCache.GetTypesDerivedFrom<object>())
             {
+                if (IgnoreType(type)) continue;
+
                 // TODO: Type validation depending on restrictions
 
-                var @namespace = NamespaceCache.GetNamespace(type);
+                if (string.IsNullOrEmpty(type.Namespace))
+                {
+                    typesInGlobalNamespace.Add(type);
+                    continue;
+                }
 
-                // TODO: Check if it's the global namespace, add it to another list instead.
+                var @namespace = NamespaceCache.GetNamespace(type);
 
                 Map map;
                 foreach (var m in m_typeMap)
@@ -468,6 +551,7 @@ namespace JakePerry.Unity
             }
 
             m_globalNamespaceMap = new Map(NamespaceCache.GetGlobalNamespace());
+            m_globalNamespaceMap.types.AddRange(typesInGlobalNamespace);
 
             m_currentSelection = current;
         }

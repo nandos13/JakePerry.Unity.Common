@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using UnityEditor;
 using UnityEngine;
 
@@ -16,8 +15,6 @@ namespace JakePerry.Unity
     [CustomPropertyDrawer(typeof(SerializeTypeDefinition))]
     public sealed class SerializeTypeDefinitionDrawer : PropertyDrawer
     {
-        private const string kBuiltInsPath = "Built-in types/";
-
         private const float kArgPaddingV = 4;
 
         private sealed class TypeSelectArgs
@@ -65,8 +62,6 @@ namespace JakePerry.Unity
         /// are always shown and an unbound type definition cannot be set.
         /// </summary>
         private static bool _disallowUnboundGeneric;
-
-        private static GenericMenu.MenuFunction2 _typeSelectCallback;
 
         private static GUIStyle _genericArgNameStyle;
         private static GUIStyle _displayNameStyle;
@@ -232,7 +227,12 @@ namespace JakePerry.Unity
 
                 // Standard property height, with an additional line for the resolved type name.
                 float height = GetPropertyHeight(property);
-                height += Spacing + LineHeight;
+
+                var argsProp = property.FindPropertyRelative("m_genericArgs");
+                if (argsProp.arraySize > 0)
+                {
+                    height += Spacing + LineHeight;
+                }
 
                 return height;
             }
@@ -338,40 +338,6 @@ namespace JakePerry.Unity
             return false;
         }
 
-        private static bool IgnoreType(Type t)
-        {
-            if (t.GetCustomAttribute<CompilerGeneratedAttribute>() != null)
-                return true;
-
-            if (t.FullName.Contains("<PrivateImplementationDetails>"))
-                return true;
-
-            return false;
-        }
-
-        private static string GetTypeDisplayName(Type t)
-        {
-            if (t.IsNested)
-            {
-                var sb = StringBuilderCache.Acquire();
-
-                sb.Insert(0, t.Name);
-
-                do
-                {
-                    t = t.DeclaringType;
-
-                    sb.Insert(0, '+');
-                    sb.Insert(0, t.Name);
-                }
-                while (t.IsNested);
-
-                return StringBuilderCache.GetStringAndRelease(sb);
-            }
-
-            return t.Name;
-        }
-
         private static void AssignType(Type type, SerializedProperty property)
         {
             var typeNameProp = property.FindPropertyRelative("m_typeName");
@@ -404,49 +370,6 @@ namespace JakePerry.Unity
             }
         }
 
-        private static void AddNamespaceToMenu(
-            GenericMenu menu,
-            string path,
-            Namespace @namespace,
-            SerializedProperty property)
-        {
-            // Recursively add child namespaces at the top
-            int nestedCount = @namespace.NestedCount;
-            for (int i = 0; i < nestedCount; ++i)
-            {
-                var childNamespace = @namespace.GetNestedNamespace(i);
-
-                var childName = childNamespace.Name;
-                var nextPath = path.Length == 0 ? childName : $"{path}/{childName}";
-
-                AddNamespaceToMenu(menu, nextPath, childNamespace, property);
-            }
-
-            bool didSeparator = false;
-            var callback = _typeSelectCallback;
-
-            // TODO: Check how feasible it is to alphabetically sort the types.
-            // Might only be worth once this moves out to its own selector menu.
-            foreach (var type in @namespace.EnumerateTypesInNamespace())
-            {
-                // TODO: Some items definitely dont show, ie. System.Collections.Generic is almost empty??
-                if (IgnoreType(type)) continue;
-
-                if (!didSeparator)
-                {
-                    menu.AddSeparator(path);
-                    didSeparator = true;
-                }
-
-                var typeContent = GetTypeDisplayName(type);
-                if (path.Length > 0) typeContent = $"{path}/{typeContent}";
-
-                var args = new TypeSelectArgs() { property = property, type = type };
-
-                menu.AddItem(new GUIContent(typeContent), false, callback, args);
-            }
-        }
-
         private static void DrawTypeSelectRect(Rect position, SerializedProperty property, GUIContent content, Type t)
         {
             const string kHint = "SerializeTypeDefinitionDrawer.TypeSelectorButton";
@@ -458,7 +381,7 @@ namespace JakePerry.Unity
 
             var current = Event.current;
             if (current.type == EventType.ExecuteCommand &&
-                StringComparer.Ordinal.Equals(current.commandName, TypeSelector.Commands.SelectionUpdated) &&
+                StringComparer.Ordinal.Equals(current.commandName, TypeSelector.SelectionUpdatedCommand) &&
                 TypeSelector.ControlID == id)
             {
                 AssignType(TypeSelector.SelectedType, property);
@@ -467,6 +390,7 @@ namespace JakePerry.Unity
                 GUIUtility.ExitGUI();
             }
 
+            // TODO: Change this graphically, no longer a drop down.
             if (EditorGUI.DropdownButton(position, content, FocusType.Passive, EditorStyles.popup))
             {
                 TypeSelector.OpenTypeSelector(id, t);
@@ -619,6 +543,7 @@ namespace JakePerry.Unity
 
             int thisIndex = index;
 
+            // TODO: Drop generic identifier (ie. List`1).
             string text;
             if (properties.type is not null)
             {
@@ -735,17 +660,25 @@ namespace JakePerry.Unity
 
                 try
                 {
+                    bool drawBoundGenericTypeName = properties.genericArgProperties.Length > 0;
+
                     var nameStyle = DisplayNameStyle;
 
-                    var r = typeNameRect;
-                    CalculateNameRects(ref r, properties, nameStyle, _nameSegments);
+                    if (drawBoundGenericTypeName)
+                    {
+                        var r = typeNameRect;
+                        CalculateNameRects(ref r, properties, nameStyle, _nameSegments);
+                    }
 
                     int hoverIndex = -1;
                     if (mouseOverRect)
                     {
                         if (typeNameRect.Contains(mousePos))
                         {
-                            FindHover(_nameSegments, properties, mousePos, out hoverIndex);
+                            if (drawBoundGenericTypeName)
+                            {
+                                FindHover(_nameSegments, properties, mousePos, out hoverIndex);
+                            }
                         }
                         else if (mousePos.y < typeNameRect.y)
                         {
@@ -757,7 +690,10 @@ namespace JakePerry.Unity
 
                     // TODO: Consider pinging the appropriate rect if we click one of these rects.
                     // Look at ObjectListArea.Frame to see how it handles pinging.
-                    DrawTypeName(_nameSegments, nameStyle, hoverIndex);
+                    if (drawBoundGenericTypeName)
+                    {
+                        DrawTypeName(_nameSegments, nameStyle, hoverIndex);
+                    }
                 }
                 finally { _nameSegments.Clear(); }
             }
