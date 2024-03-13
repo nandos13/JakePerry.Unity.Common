@@ -1,3 +1,4 @@
+using JakePerry.Collections;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -29,7 +30,37 @@ namespace JakePerry.Unity
         /// </summary>
         public const string SelectionUpdatedCommand = "TypeSelector_SelectedTypeUpdated";
 
-        private enum FilterState { None = 0, Some = 1, All = 2 }
+        private enum FilterState
+        {
+            /// <summary>
+            /// Namespace is not affected by the search filter.
+            /// </summary>
+            None = 0,
+
+            /// <summary>
+            /// Some types in the namespace are filtered, but some are still available.
+            /// </summary>
+            Some = 1,
+
+            /// <summary>
+            /// All types in the namespace are filtered and as such it can be skipped.
+            /// </summary>
+            All = 2
+        }
+
+        private readonly struct TypeDisplayNames
+        {
+            public readonly string name;
+            public readonly string filter;
+            public readonly string braced;
+
+            public TypeDisplayNames(string name, string filter, string braced)
+            {
+                this.name = name;
+                this.filter = filter;
+                this.braced = braced;
+            }
+        }
 
         private sealed class Map
         {
@@ -41,7 +72,7 @@ namespace JakePerry.Unity
             public Map(Namespace n) { @namespace = n; }
         }
 
-        private static readonly Dictionary<Type, (string, string)> _displayNameCache = new();
+        private static readonly Dictionary<Type, TypeDisplayNames> _displayNameCache = new();
 
         private static readonly (Type, string)[] _builtInTypes = new (Type, string)[]
         {
@@ -67,6 +98,7 @@ namespace JakePerry.Unity
         private static Type _selectedType;
         private static bool _invokingTypeSelectCommand;
 
+        private readonly HashSet<Type> m_typesMatchingCurrentFilter = new();
         private readonly List<Map> m_typeMap = new();
         private readonly Map m_builtInMap = new(default);
         private Map m_globalNamespaceMap;
@@ -144,12 +176,23 @@ namespace JakePerry.Unity
 
             foreach (var tuple in _builtInTypes)
             {
+                string name = tuple.Item2;
+
+                sb.Clear();
+                sb.Append(name);
+                sb.Append(' ');
+                sb.Append(tuple.Item1.FullName);
+
+                string filter = sb.ToString();
+
                 sb.Clear();
                 sb.Append('[');
                 sb.Append(tuple.Item1.FullName);
                 sb.Append(']');
 
-                _displayNameCache[tuple.Item1] = (tuple.Item2, sb.ToString());
+                string braced = sb.ToString();
+
+                _displayNameCache[tuple.Item1] = new(name, filter, braced);
             }
 
             StringBuilderCache.Release(sb);
@@ -177,47 +220,56 @@ namespace JakePerry.Unity
             while (t.IsNested);
         }
 
-        private static (string name, string full) GetDisplayNames(Type t)
+        private static TypeDisplayNames GetDisplayNames(Type t)
         {
             // TODO: Generic names dont show arg names List`1
 
             if (t is null)
             {
-                return ("None", null);
+                return new("None", null, null);
             }
 
             if (!_displayNameCache.TryGetValue(t, out var result))
             {
                 var sb = StringBuilderCache.Acquire();
 
+                string name, full, braced;
+
                 if (t.IsNested)
                 {
                     sb.Insert(0, t.Name);
                     HandleNestedTypeDisplayName(t, sb);
 
-                    result.Item1 = sb.ToString();
+                    name = sb.ToString();
                 }
                 else
                 {
-                    result.Item1 = t.Name;
+                    name = t.Name;
                 }
 
-                result.Item2 = null;
                 if (!string.IsNullOrEmpty(t.Namespace))
                 {
                     sb.Clear();
-                    sb.Append('[');
                     sb.Append(t.Namespace);
                     sb.Append('.');
-                    sb.Append(result.Item1);
+                    sb.Append(name);
+
+                    full = sb.ToString();
+
+                    sb.Insert(0, '[');
                     sb.Append(']');
 
-                    result.Item2 = sb.ToString();
+                    braced = sb.ToString();
+                }
+                else
+                {
+                    full = name;
+                    braced = null;
                 }
 
                 StringBuilderCache.Release(sb);
 
-                _displayNameCache[t] = result;
+                _displayNameCache[t] = result = new(name, full, braced);
             }
 
             return result;
@@ -232,6 +284,18 @@ namespace JakePerry.Unity
                 return true;
 
             return false;
+        }
+
+        private static bool MatchSearchTerms(string value, ReadOnlyList<Substring> searchTerms)
+        {
+            var span = value.AsSpan();
+            foreach (var term in searchTerms)
+                if (!span.Contains(term.AsSpan(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+            return true;
         }
 
         private bool FindMap(Namespace @namespace, out Map map)
@@ -323,16 +387,16 @@ namespace JakePerry.Unity
         private void DrawType(Type t, int indentLevel, Color32? forceColor = null)
         {
             var content = TempContent;
-            (string name, string full) = GetDisplayNames(t);
+            var displayNames = GetDisplayNames(t);
 
-            content.text = name;
+            content.text = displayNames.name;
             m_typeNameStyle ??= new GUIStyle(EditorStyles.label);
             m_typeNameStyle.CalcMinMaxWidth(content, out float nameWidth, out _);
 
             float fullNameWidth = 0f;
-            if (full is not null)
+            if (displayNames.braced is not null)
             {
-                content.text = full;
+                content.text = displayNames.braced;
                 m_typeFullNameStyle ??= new GUIStyle(EditorStyles.miniLabel)
                 {
                     fontStyle = FontStyle.Italic
@@ -375,14 +439,14 @@ namespace JakePerry.Unity
                 m_typeNameStyle.normal.textColor = m_typeNameStyle.active.textColor = color32;
                 m_typeNameStyle.hover.textColor = Color.Lerp(color32, White32, kHoverLerpTerm);
 
-                content.text = name;
+                content.text = displayNames.name;
                 m_typeNameStyle.Draw(rect, content, hover, active, false, false);
 
-                if (full is not null)
+                if (displayNames.braced is not null)
                 {
                     rect = rect.PadLeft(nameWidth + Spacing);
 
-                    content.text = full;
+                    content.text = displayNames.braced;
                     m_typeFullNameStyle.Draw(rect, content, hover, active, false, false);
                 }
             }
@@ -405,48 +469,40 @@ namespace JakePerry.Unity
             }
         }
 
-        private void DrawTypes(Map map, int indentLevel)
+        private bool IsMapOrAnyChildAvailable(Map map)
         {
-            var visible = map.visible;
-            if (visible.isAnimating || visible.value)
+            switch (map.filterState)
             {
-                EditorGUILayout.BeginFadeGroup(visible.faded);
-
-                for (int i = 0; i < map.@namespace.NestedCount; ++i)
-                {
-                    var child = map.@namespace.GetNestedNamespace(i);
-                    if (FindMap(child, out Map other))
+                case FilterState.None:
                     {
-                        DrawNamespaceHeader(child.Name, child.FullName, other.visible, indentLevel + 1);
-                        DrawTypes(other, indentLevel + 1);
+                        if (map.types.Count > 0) return true;
+                        break;
                     }
-                }
 
-                Color32? forceColor = map == m_builtInMap ? DefaultAliasColor : null;
-
-                foreach (var t in map.types)
-                {
-                    DrawType(t, indentLevel, forceColor);
-                }
-
-                EditorGUILayout.EndFadeGroup();
+                case FilterState.Some:
+                    {
+                        foreach (var t in map.types)
+                            if (m_typesMatchingCurrentFilter.Contains(t))
+                            {
+                                return true;
+                            }
+                        break;
+                    }
             }
+
+            for (int i = 0; i < map.@namespace.NestedCount; ++i)
+                if (FindMap(map.@namespace.GetNestedNamespace(i), out Map child))
+                    if (IsMapOrAnyChildAvailable(child))
+                    {
+                        return true;
+                    }
+
+            return false;
         }
 
         private void DrawMap(Map map, int indentLevel)
         {
-            if (map.types.Count == 0)
-            {
-                bool anyNamespacesMapped = false;
-                for (int i = 0; i < map.@namespace.NestedCount; ++i)
-                    if (FindMap(map.@namespace.GetNestedNamespace(i), out _))
-                    {
-                        anyNamespacesMapped = true;
-                        break;
-                    }
-
-                if (!anyNamespacesMapped) return;
-            }
+            if (!IsMapOrAnyChildAvailable(map)) return;
 
             string name, full = null;
             if (map == m_builtInMap) name = "Built in";
@@ -474,11 +530,18 @@ namespace JakePerry.Unity
                     }
                 }
 
-                Color32? forceColor = map == m_builtInMap ? DefaultAliasColor : null;
-
-                foreach (var t in map.types)
+                if (map.filterState != FilterState.All)
                 {
-                    DrawType(t, indentLevel, forceColor);
+                    Color32? forceColor = map == m_builtInMap ? DefaultAliasColor : null;
+
+                    bool checkFilterPerType = map.filterState == FilterState.Some;
+                    foreach (var t in map.types)
+                    {
+                        if (!checkFilterPerType || m_typesMatchingCurrentFilter.Contains(t))
+                        {
+                            DrawType(t, indentLevel, forceColor);
+                        }
+                    }
                 }
 
                 EditorGUILayout.EndFadeGroup();
@@ -489,7 +552,52 @@ namespace JakePerry.Unity
         {
             base.OnSearchFilterChanged();
 
-            // todo
+            m_typesMatchingCurrentFilter.Clear();
+
+            var searchTerms = base.SearchTerms;
+
+            // If there is no search filter, everything is available.
+            if (searchTerms.Count == 0)
+            {
+                foreach (var map in m_typeMap)
+                {
+                    map.filterState = FilterState.None;
+                }
+                return;
+            }
+
+            foreach (var map in m_typeMap)
+            {
+                // First pass is an optimization. If a namespace itself matches the search filter,
+                // then all types in the namespace must also match.
+                if (map == m_builtInMap || map == m_globalNamespaceMap)
+                {
+                    map.filterState = FilterState.Some;
+                }
+                else
+                {
+                    map.filterState = MatchSearchTerms(map.@namespace.FullName, searchTerms)
+                        ? FilterState.None
+                        : FilterState.Some;
+                }
+
+                // Second pass checks per-type.
+                if (map.filterState != FilterState.None)
+                {
+                    bool anyAvailable = false;
+                    foreach (var t in map.types)
+                    {
+                        var displayNames = GetDisplayNames(t);
+                        if (MatchSearchTerms(displayNames.filter, searchTerms))
+                        {
+                            anyAvailable = true;
+                            m_typesMatchingCurrentFilter.Add(t);
+                        }
+                    }
+
+                    map.filterState = anyAvailable ? FilterState.Some : FilterState.All;
+                }
+            }
         }
 
         protected sealed override void DrawBodyGUI()
@@ -505,34 +613,27 @@ namespace JakePerry.Unity
             m_typeMap.Clear();
             m_builtInMap.types.Clear();
 
-            var typesInGlobalNamespace = new List<Type>();
+            m_globalNamespaceMap = new Map(NamespaceCache.GetGlobalNamespace());
+            m_typeMap.Add(m_globalNamespaceMap);
 
+            // TODO: Investigate: TypeCache doesnt contain some types, ie List<>???
+            // TODO: Also weird stuff appearing, search for "collections" and some weird
+            //       "System.Collections.Immutable1636539.AllowNullAttribute" class shows,
+            //       apparently living in System.Diagnostics.CodeAnalysis namespace
             foreach (var type in TypeCache.GetTypesDerivedFrom<object>())
             {
                 if (IgnoreType(type)) continue;
 
                 // TODO: Type validation depending on restrictions
 
-                if (string.IsNullOrEmpty(type.Namespace))
-                {
-                    typesInGlobalNamespace.Add(type);
-                    continue;
-                }
-
                 var @namespace = NamespaceCache.GetNamespace(type);
 
-                Map map;
-                foreach (var m in m_typeMap)
-                    if (m.@namespace.Equals(@namespace))
-                    {
-                        map = m;
-                        goto ADD_TYPE_TO_MAP;
-                    }
+                if (!FindMap(@namespace, out Map map))
+                {
+                    map = new Map(@namespace);
+                    m_typeMap.Add(map);
+                }
 
-                map = new Map(@namespace);
-                m_typeMap.Add(map);
-
-            ADD_TYPE_TO_MAP:
                 map.types.Add(type);
             }
 
@@ -549,9 +650,7 @@ namespace JakePerry.Unity
                 // TODO: Validate built in types
                 m_builtInMap.types.Add(tuple.Item1);
             }
-
-            m_globalNamespaceMap = new Map(NamespaceCache.GetGlobalNamespace());
-            m_globalNamespaceMap.types.AddRange(typesInGlobalNamespace);
+            m_typeMap.Add(m_builtInMap);
 
             m_currentSelection = current;
         }

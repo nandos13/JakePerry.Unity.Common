@@ -1,3 +1,4 @@
+using JakePerry.Collections;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -13,6 +14,7 @@ namespace JakePerry.Unity
     /// </summary>
     public abstract class AbstractSelectorWindow : EditorWindow
     {
+        private const string kSearchBarControlName = "JakePerry.Unity.AbstractSelectorWindow.SearchBarControl";
         private const string kWidthPref = "JakePerry.Unity.AbstractSelectorWindow.Width.";
         private const string kHeightPref = "JakePerry.Unity.AbstractSelectorWindow.Height.";
 
@@ -63,6 +65,8 @@ namespace JakePerry.Unity
         protected GUIStyle SearchBarStyle => _searchBarStyle ??= CreateSearchBarStyle();
 
         protected GUIStyle SearchLabelStyle => _searchLabelStyle ??= CreateSearchLabelStyle();
+
+        protected ReadOnlyList<Substring> SearchTerms => m_searchWords;
 
         protected virtual GUIStyle CreateSearchBarStyle()
         {
@@ -176,6 +180,7 @@ namespace JakePerry.Unity
 
             EditorGUI.BeginChangeCheck();
             {
+                GUI.SetNextControlName(kSearchBarControlName);
                 m_searchFilter = EditorGUI.TextField(textRect, m_searchFilter, style);
             }
             if (EditorGUI.EndChangeCheck())
@@ -197,13 +202,20 @@ namespace JakePerry.Unity
             }
         }
 
+        private bool SearchBoxHasFocus()
+        {
+            // TODO: Not happy with the gui control name solution, seems to now always take focus
+            return StringComparer.Ordinal.Equals(kSearchBarControlName, GUI.GetNameOfFocusedControl());
+        }
+
         private void HandleKeyboardInput()
         {
             var current = Event.current;
             if (current.type == EventType.KeyDown)
             {
                 var key = current.keyCode;
-                if (key == KeyCode.Return || key == KeyCode.KeypadEnter)
+                if ((key == KeyCode.Return || key == KeyCode.KeypadEnter) &&
+                    !SearchBoxHasFocus())
                 {
                     Close();
                     GUI.changed = true;
