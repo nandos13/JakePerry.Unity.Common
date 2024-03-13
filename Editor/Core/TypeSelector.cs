@@ -223,6 +223,7 @@ namespace JakePerry.Unity
         private static TypeDisplayNames GetDisplayNames(Type t)
         {
             // TODO: Generic names dont show arg names List`1
+            //       Be aware of recursion if generic arg is decalring type (ie. List<List<int>>)
 
             if (t is null)
             {
@@ -311,6 +312,16 @@ namespace JakePerry.Unity
             return false;
         }
 
+        private void CollapseChildren(Map map)
+        {
+            foreach (var child in map.@namespace)
+                if (FindMap(child, out Map map2))
+                {
+                    map2.visible.target = false;
+                    CollapseChildren(map2);
+                }
+        }
+
         protected override void OnEnable()
         {
             base.OnEnable();
@@ -333,8 +344,19 @@ namespace JakePerry.Unity
             GUIUtility.ExitGUI();
         }
 
-        private void DrawNamespaceHeader(string name, string fullName, AnimBool visible, int indentLevel)
+        private void DrawNamespaceHeader(Map map, int indentLevel)
         {
+            string name, fullName = null;
+            if (map == m_builtInMap) name = "Built in";
+            else if (map == m_globalNamespaceMap) name = "Global";
+            else
+            {
+                name = map.@namespace.Name;
+                fullName = map.@namespace.FullName;
+            }
+
+            var visible = map.visible;
+
             var style = NamespaceStyle;
 
             var content = GetTempContent(name);
@@ -358,7 +380,6 @@ namespace JakePerry.Unity
 
             if (current.type == EventType.Repaint)
             {
-                // TODO: Nicer foldout visuals
                 EditorGUI.Foldout(foldoutRect, visible.value, GUIContent.none);
                 style.Draw(rect, content, hover, false, false, false);
 
@@ -374,10 +395,16 @@ namespace JakePerry.Unity
             }
             else if (current.type == EventType.MouseDown && hover)
             {
-                // TODO: Consider auto collapsing everything else for performance?
+                bool newVisibleState = !visible.value;
 
                 current.Use();
-                visible.target = !visible.value;
+                visible.target = newVisibleState;
+
+                // Collapsing a namespace also collapses all child namespaces
+                if (!newVisibleState)
+                {
+                    CollapseChildren(map);
+                }
             }
 
             // TODO: Figure out keyboard focus, support navigating with arrows.
@@ -504,19 +531,9 @@ namespace JakePerry.Unity
         {
             if (!IsMapOrAnyChildAvailable(map)) return;
 
-            string name, full = null;
-            if (map == m_builtInMap) name = "Built in";
-            else if (map == m_globalNamespaceMap) name = "Global";
-            else
-            {
-                name = map.@namespace.Name;
-                full = map.@namespace.FullName;
-            }
+            DrawNamespaceHeader(map, indentLevel);
 
             var visible = map.visible;
-
-            DrawNamespaceHeader(name, full, visible, indentLevel);
-
             if (visible.isAnimating || visible.value)
             {
                 EditorGUILayout.BeginFadeGroup(visible.faded);

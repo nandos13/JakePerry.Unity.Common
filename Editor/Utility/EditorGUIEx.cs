@@ -169,6 +169,29 @@ namespace JakePerry.Unity
             return result;
         }
 
+        public static bool ObjectFieldButton(Rect rect, GUIContent content, int id)
+        {
+            var buttonRect = rect.WithWidth(rect.height, anchorRight: true);
+
+            var current = Event.current;
+            bool hover = rect.Contains(current.mousePosition);
+            if (current.type == EventType.Repaint)
+            {
+                bool focused = GUIUtility.keyboardControl == id;
+                EditorStyles.objectField.Draw(rect, content, hover, false, false, focused);
+            }
+            else if (current.type == EventType.MouseDown)
+            {
+                if (current.clickCount == 1 && hover && !buttonRect.Contains(current.mousePosition))
+                {
+                    GUIUtility.keyboardControl = id;
+                }
+            }
+
+            var buttonStyle = Styles.GetStyle("m_ObjectFieldButton");
+            return CustomGuiButton(buttonRect, id, buttonStyle, GUIContent.none);
+        }
+
         public static int CancellableTextField(Rect rect, ref string text, bool cancelOnClickAway = true)
         {
             int code = 0;

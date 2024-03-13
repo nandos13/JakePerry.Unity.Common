@@ -390,8 +390,7 @@ namespace JakePerry.Unity
                 GUIUtility.ExitGUI();
             }
 
-            // TODO: Change this graphically, no longer a drop down.
-            if (EditorGUI.DropdownButton(position, content, FocusType.Passive, EditorStyles.popup))
+            if (EditorGUIEx.ObjectFieldButton(position, content, id))
             {
                 TypeSelector.OpenTypeSelector(id, t);
             }
