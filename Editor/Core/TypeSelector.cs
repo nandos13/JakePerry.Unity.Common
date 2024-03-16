@@ -118,7 +118,11 @@ namespace JakePerry.Unity
         private static Color32 NamespaceBackgroundColor => new Color32(40, 40, 40, 255);
         private static Color32 White32 => new Color32(255, 255, 255, 255);
 
-        // TODO: Documentation
+        /// <summary>
+        /// The <see cref="Type"/> that was selected by the user.
+        /// This is only available during the "Selection Updated" GUI command event.
+        /// </summary>
+        /// <seealso cref="SelectionUpdatedCommand"/>
         public static Type SelectedType
         {
             get

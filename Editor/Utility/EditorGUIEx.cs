@@ -145,6 +145,13 @@ namespace JakePerry.Unity
 
         public static bool CustomGuiButton(Rect rect, int id, GUIStyle style, GUIContent content)
         {
+            // TODO: Investigate proper click handling & use of the hotControl feature.
+            //       EditorGUI.FoldoutInternal is a good place to look.
+            //       MouseDown sets keyboard & hot control,
+            //       MouseUp actions only if id is hotControl.
+            //       Also need to look more into the usage of Event.current.rawType.
+            //       Finally, find a nice way to reuse this in other places where I'm doing custom GUI.
+
             bool result = false;
 
             var evt = Event.current;
@@ -182,7 +189,7 @@ namespace JakePerry.Unity
             }
             else if (current.type == EventType.MouseDown)
             {
-                if (current.clickCount == 1 && hover && !buttonRect.Contains(current.mousePosition))
+                if (current.button == 0 && current.clickCount == 1 && hover && !buttonRect.Contains(current.mousePosition))
                 {
                     GUIUtility.keyboardControl = id;
                 }

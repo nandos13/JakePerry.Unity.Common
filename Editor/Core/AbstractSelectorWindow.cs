@@ -43,7 +43,10 @@ namespace JakePerry.Unity
             }
         }
 
-        // TODO: Documentation
+        /// <summary>
+        /// Indicates the ID of the control which was responsible for opening
+        /// the current selector window.
+        /// </summary>
         public static int ControlID
         {
             get
@@ -114,6 +117,8 @@ namespace JakePerry.Unity
 
         protected abstract void DrawBodyGUI();
 
+        protected virtual void OnEnterKeyPress() { }
+
         protected virtual void OnSearchFilterChanged() { }
 
         private static T GetSharedInstance<T>()
@@ -127,7 +132,15 @@ namespace JakePerry.Unity
             return (T)window;
         }
 
-        // TODO: Documentation
+        /// <summary>
+        /// Show the selector window for the given type.
+        /// </summary>
+        /// <param name="controlId">
+        /// ID of the control that is responsible for opening the selector window.
+        /// </param>
+        /// <returns>
+        /// The selector window that was shown.
+        /// </returns>
         protected static T ShowWindow<T>(int controlId)
             where T : AbstractSelectorWindow
         {
@@ -217,9 +230,7 @@ namespace JakePerry.Unity
                 if ((key == KeyCode.Return || key == KeyCode.KeypadEnter) &&
                     !SearchBoxHasFocus())
                 {
-                    Close();
-                    GUI.changed = true;
-                    GUIUtility.ExitGUI();
+                    OnEnterKeyPress();
                 }
             }
         }

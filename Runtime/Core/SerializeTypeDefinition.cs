@@ -5,7 +5,10 @@ using UnityEngine;
 
 namespace JakePerry.Unity
 {
-    // TODO: Documentation pass
+    /// <summary>
+    /// A serializable data structure that encapsulates a <see cref="Type"/>,
+    /// with support for both bound and unbound generics.
+    /// </summary>
     [Serializable]
     public partial struct SerializeTypeDefinition
     {
@@ -20,6 +23,10 @@ namespace JakePerry.Unity
         [SerializeField]
         private SerializeTypeDefinition[] m_genericArgs;
 
+        /// <summary>
+        /// Indicates whether the type was set to <see langword="null"/>
+        /// at serialization time.
+        /// </summary>
         public bool IsNull => string.IsNullOrEmpty(m_typeName);
 
 #if UNITY_EDITOR
@@ -57,6 +64,17 @@ namespace JakePerry.Unity
             return ResolveTypeWithCache(m_typeName, throwOnError, true);
         }
 
+        /// <summary>
+        /// Resolve the <see cref="Type"/> that was serialized.
+        /// </summary>
+        /// <param name="throwOnError">
+        /// If <see langword="true"/>, an exception is thrown if the type cannot be resolved.
+        /// </param>
+        /// <returns>
+        /// The <see cref="Type"/> that was serialized, or <see langword="null"/> if no type
+        /// could be resolved and <paramref name="throwOnError"/> is <see langword="false"/>.
+        /// </returns>
+        /// <exception cref="InvalidOperationException"/>
         public Type ResolveType(bool throwOnError)
         {
             var t = ResolveTypeUnbound(throwOnError);
@@ -103,6 +121,11 @@ namespace JakePerry.Unity
             return t;
         }
 
+        /// <returns>
+        /// The <see cref="Type"/> that was serialized, or <see langword="null"/> if no type
+        /// could be resolved.
+        /// </returns>
+        /// <inheritdoc cref="ResolveType(bool)"/>
         public Type ResolveType() => ResolveType(false);
     }
 }
