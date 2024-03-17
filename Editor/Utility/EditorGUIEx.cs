@@ -143,17 +143,51 @@ namespace JakePerry.Unity
             return AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(iconGuid));
         }
 
+        public static bool ProcessGuiClickEvent(Event e, Rect rect, int id, int mouseButton = 0)
+        {
+            _ = e ?? throw new ArgumentNullException(nameof(e));
+
+            if (!GUI.enabled) return false;
+
+            switch (e.type)
+            {
+                case EventType.MouseDown:
+                    {
+                        if (e.button == mouseButton && rect.Contains(e.mousePosition))
+                        {
+                            GUIUtility.keyboardControl = (GUIUtility.hotControl = id);
+                            e.Use();
+                        }
+                        break;
+                    }
+
+                case EventType.MouseUp:
+                    {
+                        if (GUIUtility.hotControl == id && e.button == mouseButton)
+                        {
+                            GUIUtility.hotControl = 0;
+                            e.Use();
+
+                            if (rect.Contains(e.mousePosition))
+                            {
+                                return true;
+                            }
+                        }
+                        break;
+                    }
+
+                case EventType.MouseDrag:
+                    {
+                        if (GUIUtility.hotControl == id) e.Use();
+                        break;
+                    }
+            }
+
+            return false;
+        }
+
         public static bool CustomGuiButton(Rect rect, int id, GUIStyle style, GUIContent content)
         {
-            // TODO: Investigate proper click handling & use of the hotControl feature.
-            //       EditorGUI.FoldoutInternal is a good place to look.
-            //       MouseDown sets keyboard & hot control,
-            //       MouseUp actions only if id is hotControl.
-            //       Also need to look more into the usage of Event.current.rawType.
-            //       Finally, find a nice way to reuse this in other places where I'm doing custom GUI.
-
-            bool result = false;
-
             var evt = Event.current;
             if (evt.type == EventType.Repaint)
             {
@@ -164,16 +198,12 @@ namespace JakePerry.Unity
 
                 style.Draw(rect, content, id, active, hover);
             }
-            else if (evt.type == EventType.MouseDown && evt.button == 0)
+            else
             {
-                if (GUI.enabled && rect.Contains(evt.mousePosition))
-                {
-                    result = true;
-                    evt.Use();
-                }
+                return ProcessGuiClickEvent(evt, rect, id, mouseButton: 0);
             }
 
-            return result;
+            return false;
         }
 
         public static bool ObjectFieldButton(Rect rect, GUIContent content, int id)

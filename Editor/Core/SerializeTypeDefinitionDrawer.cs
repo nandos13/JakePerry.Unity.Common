@@ -374,9 +374,6 @@ namespace JakePerry.Unity
         {
             const string kHint = "SerializeTypeDefinitionDrawer.TypeSelectorButton";
 
-            // TODO: Address performance issues with generic menu creation.
-            // This type may benefit from a new window like the object selector.
-
             int id = GUIUtility.GetControlID(kHint.GetHashCode(), FocusType.Keyboard, position);
 
             var current = Event.current;
@@ -431,13 +428,13 @@ namespace JakePerry.Unity
                     properties.genericArgs.arraySize = GetGenericArgumentsAndCache(properties.type).Length;
                 }
 
+                properties.property.serializedObject.ApplyModifiedProperties();
                 GUIUtility.ExitGUI();
             }
         }
 
         private static void DrawGUI(Properties properties)
         {
-            // TODO: Restrict selectable types by generic argument. Also look at conforming to generic restraints, etc.
             // TODO: Show a warning/error if only half bound
 
             var position = properties.position;
@@ -657,16 +654,14 @@ namespace JakePerry.Unity
                 int i = -1;
                 var properties = BuildProperties(position, property, ref i);
 
+                bool drawBoundGenericTypeName = properties.genericArgProperties.Length > 0;
+
                 try
                 {
-                    bool drawBoundGenericTypeName = properties.genericArgProperties.Length > 0;
-
-                    var nameStyle = DisplayNameStyle;
-
                     if (drawBoundGenericTypeName)
                     {
                         var r = typeNameRect;
-                        CalculateNameRects(ref r, properties, nameStyle, _nameSegments);
+                        CalculateNameRects(ref r, properties, DisplayNameStyle, _nameSegments);
                     }
 
                     int hoverIndex = -1;
@@ -691,7 +686,7 @@ namespace JakePerry.Unity
                     // Look at ObjectListArea.Frame to see how it handles pinging.
                     if (drawBoundGenericTypeName)
                     {
-                        DrawTypeName(_nameSegments, nameStyle, hoverIndex);
+                        DrawTypeName(_nameSegments, DisplayNameStyle, hoverIndex);
                     }
                 }
                 finally { _nameSegments.Clear(); }

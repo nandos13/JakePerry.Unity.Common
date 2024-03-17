@@ -413,6 +413,8 @@ namespace JakePerry.Unity
 
             // TODO: Figure out keyboard focus, support navigating with arrows.
             //       Left/right to expand collapse namespaces
+            //       Will require GUIUtility.keyboardControl
+            //       up/down arrows will need to cycle through entries, unsure how thats done
         }
 
         private void DrawType(Type t, int indentLevel, Color32? forceColor = null)
