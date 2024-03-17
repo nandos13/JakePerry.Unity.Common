@@ -78,7 +78,7 @@ namespace JakePerry.Unity.Events
             bool xIsProperty = x is PropertyInfo;
             bool yIsProperty = y is PropertyInfo;
 
-            int comp = xIsProperty.CompareTo(yIsProperty);
+            int comp = yIsProperty.CompareTo(xIsProperty);
             if (comp == 0)
             {
                 comp = StringComparer.Ordinal.Compare(x.Name, y.Name);
@@ -423,9 +423,21 @@ namespace JakePerry.Unity.Events
 
         private static string GetNiceMemberString(MemberInfo member, bool dynamic)
         {
+            StringBuilder sb;
             if (member is PropertyInfo p)
             {
-                return dynamic ? p.Name : $"{GetNiceTypeName(p.PropertyType)} {p.Name}";
+                sb = StringBuilderCache.Acquire();
+
+                if (!dynamic)
+                {
+                    sb.Append(GetNiceTypeName(p.PropertyType));
+                    sb.Append(' ');
+                }
+
+                sb.Append(p.Name);
+                sb.Append(" { get; }");
+
+                return StringBuilderCache.GetStringAndRelease(sb);
             }
 
             if (dynamic) return member.Name;
@@ -433,7 +445,7 @@ namespace JakePerry.Unity.Events
             var method = member as MethodInfo;
             var paramTypes = System.Linq.Enumerable.Select(method.GetParameters(), p => p.ParameterType);
 
-            var sb = StringBuilderCache.Acquire();
+            sb = StringBuilderCache.Acquire();
 
             sb.Append(GetNiceTypeName(method.ReturnType));
             sb.Append(' ');
@@ -508,10 +520,9 @@ namespace JakePerry.Unity.Events
                 }
             }
 
-            bool anyDynamicMethods = false;
             if (list2.Count > 0)
             {
-                anyDynamicMethods = true;
+                menu.AddSeparator(string.Empty);
 
                 // TODO: Determine if the return type should show before "Dynamic" string
                 var sb = StringBuilderCache.Acquire();
@@ -539,10 +550,7 @@ namespace JakePerry.Unity.Events
 
             if (list2.Count > 0)
             {
-                if (anyDynamicMethods)
-                {
-                    menu.AddSeparator(string.Empty);
-                }
+                menu.AddSeparator(string.Empty);
 
                 menu.AddItem(new GUIContent("Static Arguments"), false, null);
 
