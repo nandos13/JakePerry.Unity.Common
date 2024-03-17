@@ -17,6 +17,7 @@ namespace JakePerry.Unity.Events
             m_func = (TFunc)Delegate.CreateDelegate(typeof(TFunc), target, method);
         }
 
+        // TODO: Double check what this was used for in Unity's code, it may not be needed.
         internal bool Match(object target, MethodInfo method)
         {
             var func = m_func;

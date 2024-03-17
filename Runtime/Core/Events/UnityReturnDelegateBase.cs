@@ -10,6 +10,17 @@ namespace JakePerry.Unity.Events
     [Serializable]
     public abstract class UnityReturnDelegateBase : ISerializationCallbackReceiver
     {
+#if UNITY_EDITOR
+
+        internal static class EditorBehaviours
+        {
+            internal const byte kReturnDefaultValue = 0;
+            internal const byte kReturnMockValue = 1;
+            internal const byte kInvokeInEditMode = 2;
+        }
+
+#endif // UNITY_EDITOR
+
         [SerializeField]
         private UnityEngine.Object m_target;
 
@@ -30,13 +41,6 @@ namespace JakePerry.Unity.Events
 
         [SerializeField]
         private byte m_policy;
-
-#if UNITY_EDITOR
-
-        [SerializeField]
-        private byte m_editorBehaviour;
-
-#endif // UNITY_EDITOR
 
         private bool m_dirty = true;
         private RuntimeInvocableCall m_call;
@@ -61,6 +65,10 @@ namespace JakePerry.Unity.Events
                 m_policy = (byte)(int)value;
             }
         }
+
+#if UNITY_EDITOR
+        internal abstract IInvocableCall ConstructEditorModeCall();
+#endif
 
         internal protected abstract Type[] GetEventDefinedInvocationArgumentTypes();
         internal abstract RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method);
@@ -185,7 +193,7 @@ namespace JakePerry.Unity.Events
         /// Checks if invocation is allowed &amp; handles logging an error or throwing an exception
         /// in accordance with the current error handling policy when it is not allowed..
         /// </summary>
-        private static bool VerifyInvokeIsAllowed(RuntimeInvocableCall call, TargetDestroyedErrorHandlingPolicy policy)
+        private static bool VerifyInvokeIsAllowed(IInvocableCall call, TargetDestroyedErrorHandlingPolicy policy)
         {
             bool allowed = call.AllowInvoke;
             if (!allowed)
@@ -289,14 +297,29 @@ namespace JakePerry.Unity.Events
         /// checks that the call is valid.
         /// </summary>
         /// <returns>
-        /// The <see cref="RuntimeInvocableCall"/> instance that should be invoked by the derived class,
+        /// The <see cref="IInvocableCall"/> instance that should be invoked by the derived class,
         /// if one is available and valid; Otherwise, returns <see langword="null"/>.
         /// </returns>
-        internal RuntimeInvocableCall PrepareInvoke()
+        internal IInvocableCall PrepareInvoke()
         {
+            IInvocableCall call;
+
+#if UNITY_EDITOR
+
+            if (UnityEditor.EditorApplication.isPlaying)
+            {
+                call = ConstructEditorModeCall();
+                if (call is not null)
+                {
+                    return call;
+                }
+            }
+
+#endif // UNITY_EDITOR
+
             ResolveRuntimeCallIfDirty();
 
-            var call = m_call;
+            call = m_call;
 
             if (call is not null)
             {
@@ -313,5 +336,34 @@ namespace JakePerry.Unity.Events
         void ISerializationCallbackReceiver.OnBeforeSerialize() => DirtyRuntimeCall();
 
         void ISerializationCallbackReceiver.OnAfterDeserialize() => DirtyRuntimeCall();
+    }
+
+    [Serializable]
+    public abstract class UnityReturnDelegateBase<TResult> : UnityReturnDelegateBase
+    {
+#if UNITY_EDITOR
+
+        [SerializeField]
+        private byte m_editorBehaviour;
+        [SerializeField]
+        private TResult m_editorMockValue;
+
+#endif // UNITY_EDITOR
+
+        protected sealed override Type ReturnType => typeof(TResult);
+
+        internal sealed override IInvocableCall ConstructEditorModeCall()
+        {
+            if (m_editorBehaviour == EditorBehaviours.kReturnDefaultValue)
+            {
+                return new MockInvocableCall<TResult>(default);
+            }
+            else if (m_editorBehaviour == EditorBehaviours.kReturnMockValue)
+            {
+                return new MockInvocableCall<TResult>(m_editorMockValue);
+            }
+
+            return null;
+        }
     }
 }

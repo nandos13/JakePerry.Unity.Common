@@ -3,7 +3,7 @@ using System.Reflection;
 
 namespace JakePerry.Unity.Events
 {
-    internal abstract class RuntimeInvocableCall
+    internal abstract class RuntimeInvocableCall : IInvocableCall
     {
         private readonly MethodInfo m_method;
         private readonly object m_target;
@@ -57,5 +57,9 @@ namespace JakePerry.Unity.Events
             _ = args ?? throw new ArgumentNullException(nameof(args));
             return Invoke_Impl(args);
         }
+
+        bool IInvocableCall.AllowInvoke => this.AllowInvoke;
+
+        object IInvocableCall.Invoke(object[] args) => this.Invoke(args);
     }
 }

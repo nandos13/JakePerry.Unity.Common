@@ -14,7 +14,15 @@ namespace JakePerry.Unity.Events
     [CustomPropertyDrawer(typeof(UnityReturnDelegateBase), useForChildren: true)]
     public sealed class UnityReturnDelegateDrawer : PropertyDrawer
     {
+        private const string kPolicyTooltip = "Policy used when the target invocation object is destroyed.";
+        private const string kPolicyTooltipStatic = "* Not applicable for static member delegates. *\n" + kPolicyTooltip;
+        private const string kMockingNotSerializableMessage = "Return type is not serializable. Default value will be used.";
+
+        private const string kBasicSettingsTabHint = "UnityReturnDelegateDrawer.Tab.Basic";
+        private const string kAdvancedSettingsTabHint = "UnityReturnDelegateDrawer.Tab.Advanced";
+
         private const float kHeaderHeight = 18f;
+        private const float kNextElementSpacing = 1f;
 
         private sealed class State
         {
@@ -37,8 +45,11 @@ namespace JakePerry.Unity.Events
                 "An exception of type " + nameof(InvocationTargetDestroyedException) + " is thrown")
         };
 
-        private static readonly GUIContent[] _editorInvocationOptions = new GUIContent[2]
+        private static readonly GUIContent[] _editorInvocationOptions = new GUIContent[3]
         {
+            new GUIContent(
+                "Return Default Value",
+                "Delegate is not invoked in Edit mode. Instead, the default value is returned."),
             new GUIContent(
                 "Return Mock Value",
                 "Delegate is not invoked in Edit mode. Instead, a mock value is returned."),
@@ -188,11 +199,10 @@ namespace JakePerry.Unity.Events
             var basicBtnRect = rect.WithWidth(basicSize, anchorRight: true);
             rect = rect.PadRight(basicSize);
 
-            var evt = Event.current;
-            var mousePos = evt.mousePosition;
-            bool hoverRuntime = basicBtnRect.Contains(mousePos);
-            bool hoverEditor = advancedBtnRect.Contains(mousePos);
+            int basicBtnId = GUIUtility.GetControlID(kBasicSettingsTabHint.GetHashCode(), FocusType.Keyboard, basicBtnRect);
+            int advancedBtnId = GUIUtility.GetControlID(kAdvancedSettingsTabHint.GetHashCode(), FocusType.Keyboard, advancedBtnRect);
 
+            var evt = Event.current;
             if (evt.type == EventType.Repaint)
             {
                 var headerStyle = ReorderableList.defaultBehaviours.headerBackground;
@@ -200,21 +210,28 @@ namespace JakePerry.Unity.Events
 
                 var tabStyle = EditorGUIEx.Styles.DockArea.DragTab;
 
+                var mousePos = evt.mousePosition;
                 bool isViewingAdvanced = state.viewingAdvancedSettings;
 
                 basicBtnRect.y += tabStyle.margin.top;
-                tabStyle.Draw(basicBtnRect, isHover: hoverRuntime, isActive: !isViewingAdvanced, on: false, hasKeyboardFocus: false);
+                tabStyle.Draw(basicBtnRect, isHover: basicBtnRect.Contains(mousePos), isActive: !isViewingAdvanced, on: false, hasKeyboardFocus: GUIUtility.keyboardControl == basicBtnId);
 
                 advancedBtnRect.y += tabStyle.margin.top;
-                tabStyle.Draw(advancedBtnRect, isHover: hoverEditor, isActive: isViewingAdvanced, on: false, hasKeyboardFocus: false);
+                tabStyle.Draw(advancedBtnRect, isHover: advancedBtnRect.Contains(mousePos), isActive: isViewingAdvanced, on: false, hasKeyboardFocus: GUIUtility.keyboardControl == advancedBtnId);
 
                 EditorGUI.LabelField(basicBtnRect, basicLabel, tabLabelStyle);
                 EditorGUI.LabelField(advancedBtnRect, advancedLabel, tabLabelStyle);
             }
-            else if (evt.type == EventType.MouseUp)
+            else
             {
-                if (hoverRuntime) state.viewingAdvancedSettings = false;
-                else if (hoverEditor) state.viewingAdvancedSettings = true;
+                if (EditorGUIEx.ProcessGuiClickEvent(evt, basicBtnRect, basicBtnId))
+                {
+                    state.viewingAdvancedSettings = false;
+                }
+                if (EditorGUIEx.ProcessGuiClickEvent(evt, advancedBtnRect, advancedBtnId))
+                {
+                    state.viewingAdvancedSettings = true;
+                }
             }
 
             rect.width -= advancedBtnRect.width + 20f;
@@ -267,14 +284,19 @@ namespace JakePerry.Unity.Events
             var behaviourRect = rect.WithHeight(LineHeight);
             rect = rect.PadTop(LineHeight + Spacing);
 
-            // TODO: Tooltip. is this just for target obj destroyed?
+            var modeProp = property.FindPropertyRelative("m_targetingStaticMember");
+            bool @static = modeProp.boolValue;
+
             var labelContent = GetTempContent(
-                "Error Handling Policy",
-                "");
+                text: "Destroyed Target Policy",
+                tooltip: @static ? kPolicyTooltipStatic : kPolicyTooltip);
             policyRect = EditorGUI.PrefixLabel(policyRect, labelContent);
 
             EditorGUI.BeginChangeCheck();
-            policy = EditorGUI.Popup(policyRect, policy, _policyOptions);
+            using (new EditorGUI.DisabledScope(@static))
+            {
+                policy = EditorGUI.Popup(policyRect, policy, _policyOptions);
+            }
 
             if (EditorGUI.EndChangeCheck()) policyProp.intValue = policy;
 
@@ -285,7 +307,27 @@ namespace JakePerry.Unity.Events
 
             if (EditorGUI.EndChangeCheck()) behaviourProp.intValue = behaviour;
 
-            // TODO: Mock value area
+            if (behaviour == UnityReturnDelegateBase.EditorBehaviours.kReturnMockValue)
+            {
+                Rect mockValueRect;
+                var mockProp = property.FindPropertyRelative("m_editorMockValue");
+                if (mockProp == null)
+                {
+                    mockValueRect = rect.WithHeight(LineHeight);
+                    EditorGUI.HelpBox(mockValueRect, kMockingNotSerializableMessage, MessageType.Warning);
+                }
+                else
+                {
+                    mockValueRect = rect.WithHeight(EditorGUI.GetPropertyHeight(mockProp, true));
+
+                    // TODO: Check this when nested, make sure indent is correct.
+                    mockValueRect = EditorGUI.PrefixLabel(mockValueRect, GetTempContent("Mock Value"));
+
+                    EditorGUI.PropertyField(mockValueRect, mockProp, GUIContent.none, true);
+                }
+
+                rect = rect.PadTop(mockValueRect.height + Spacing);
+            }
         }
 
         private bool DrawTargetTypeButton(Rect rect, bool @static)
@@ -663,6 +705,18 @@ namespace JakePerry.Unity.Events
             {
                 height += LineHeight + LineHeight + Spacing;
                 // TODO: Args height
+
+                var behaviourProp = property.FindPropertyRelative("m_editorBehaviour");
+                var behaviour = behaviourProp.intValue;
+                if (behaviour == UnityReturnDelegateBase.EditorBehaviours.kReturnMockValue)
+                {
+                    var mockProp = property.FindPropertyRelative("m_editorMockValue");
+
+                    height += Spacing;
+                    height += mockProp != null
+                        ? EditorGUI.GetPropertyHeight(mockProp, GUIContent.none, true)
+                        : LineHeight;
+                }
             }
             else
             {
@@ -685,6 +739,9 @@ namespace JakePerry.Unity.Events
 
             // TODO: Arguments expanded? add height
 
+            // Padding before next element
+            height += kNextElementSpacing;
+
             return height;
         }
 
@@ -694,6 +751,9 @@ namespace JakePerry.Unity.Events
             var member = GetMember(property);
             var eventType = member.MemberType;
             var dummy = GetDummy(eventType);
+
+            // This is added as padding before next element
+            position.height -= kNextElementSpacing;
 
             var headerRect = position.WithHeight(kHeaderHeight);
             position = position.PadTop(headerRect.height + Spacing);

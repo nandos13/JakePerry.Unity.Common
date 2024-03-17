@@ -6,10 +6,8 @@ using UnityEngine;
 namespace JakePerry.Unity.Events
 {
     [Serializable]
-    public class UnityReturnDelegate<TResult> : UnityReturnDelegateBase
+    public class UnityReturnDelegate<TResult> : UnityReturnDelegateBase<TResult>
     {
-        protected sealed override Type ReturnType => typeof(TResult);
-
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
             return new InvokableCallWithReturn<TResult>(target, method);
@@ -29,6 +27,11 @@ namespace JakePerry.Unity.Events
                 return typed.Invoke();
             }
 
+            if (call is MockInvocableCall<TResult> mock)
+            {
+                return mock.MockResult;
+            }
+
             if (call is not null)
             {
                 return (TResult)call.Invoke(Array.Empty<object>());
@@ -39,11 +42,9 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
-    public class UnityReturnDelegate<T0, TResult> : UnityReturnDelegateBase
+    public class UnityReturnDelegate<T0, TResult> : UnityReturnDelegateBase<TResult>
     {
         private static readonly Stack<object[]> _argsPool = new();
-
-        protected sealed override Type ReturnType => typeof(TResult);
 
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
@@ -64,6 +65,11 @@ namespace JakePerry.Unity.Events
                 return typed.Invoke(arg0);
             }
 
+            if (call is MockInvocableCall<TResult> mock)
+            {
+                return mock.MockResult;
+            }
+
             if (call is not null)
             {
                 if (!_argsPool.TryPop(out object[] args)) args = new object[1];
@@ -82,11 +88,9 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
-    public class UnityReturnDelegate<T0, T1, TResult> : UnityReturnDelegateBase
+    public class UnityReturnDelegate<T0, T1, TResult> : UnityReturnDelegateBase<TResult>
     {
         private static readonly Stack<object[]> _argsPool = new();
-
-        protected sealed override Type ReturnType => typeof(TResult);
 
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
@@ -105,6 +109,11 @@ namespace JakePerry.Unity.Events
             if (call is InvokableCallWithReturn<T0, T1, TResult> typed)
             {
                 return typed.Invoke(arg0, arg1);
+            }
+
+            if (call is MockInvocableCall<TResult> mock)
+            {
+                return mock.MockResult;
             }
 
             if (call is not null)
@@ -126,11 +135,9 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
-    public class UnityReturnDelegate<T0, T1, T2, TResult> : UnityReturnDelegateBase
+    public class UnityReturnDelegate<T0, T1, T2, TResult> : UnityReturnDelegateBase<TResult>
     {
         private static readonly Stack<object[]> _argsPool = new();
-
-        protected sealed override Type ReturnType => typeof(TResult);
 
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
@@ -149,6 +156,11 @@ namespace JakePerry.Unity.Events
             if (call is InvokableCallWithReturn<T0, T1, T2, TResult> typed)
             {
                 return typed.Invoke(arg0, arg1, arg2);
+            }
+
+            if (call is MockInvocableCall<TResult> mock)
+            {
+                return mock.MockResult;
             }
 
             if (call is not null)
@@ -171,11 +183,9 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
-    public class UnityReturnDelegate<T0, T1, T2, T3, TResult> : UnityReturnDelegateBase
+    public class UnityReturnDelegate<T0, T1, T2, T3, TResult> : UnityReturnDelegateBase<TResult>
     {
         private static readonly Stack<object[]> _argsPool = new();
-
-        protected sealed override Type ReturnType => typeof(TResult);
 
         internal override RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method)
         {
@@ -194,6 +204,11 @@ namespace JakePerry.Unity.Events
             if (call is InvokableCallWithReturn<T0, T1, T2, T3, TResult> typed)
             {
                 return typed.Invoke(arg0, arg1, arg2, arg3);
+            }
+
+            if (call is MockInvocableCall<TResult> mock)
+            {
+                return mock.MockResult;
             }
 
             if (call is not null)
