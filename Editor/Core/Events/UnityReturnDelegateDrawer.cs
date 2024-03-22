@@ -8,6 +8,7 @@ using UnityEditorInternal;
 using UnityEngine;
 
 using static JakePerry.Unity.EditorHelpersStatic;
+using static JakePerry.Unity.Events.ReturnDelegatesEditorUtil;
 
 namespace JakePerry.Unity.Events
 {
@@ -29,72 +30,76 @@ namespace JakePerry.Unity.Events
             public bool viewingAdvancedSettings;
         }
 
-        private static readonly GUIContent[] _policyOptions = new GUIContent[4]
+        private sealed class AssignMethodArguments
         {
-            new GUIContent(
-                "Global (Default)",
-                "Use global error handling policy."),
-            new GUIContent(
-                "None",
-                "Ignore errors. Invocation does not proceed, and the default value is returned."),
-            new GUIContent(
-                "Log Error",
-                "Log an error. Invocation does not proceed, and the default value is returned."),
-            new GUIContent(
-                "Log Exception",
-                "An exception of type " + nameof(InvocationTargetDestroyedException) + " is thrown")
-        };
+            public SerializedProperty property;
+            public MemberInfo member;
+            public bool dynamicArguments;
+        }
 
-        private static readonly GUIContent[] _editorInvocationOptions = new GUIContent[3]
+        private sealed class PropertyCache
         {
-            new GUIContent(
-                "Return Default Value",
-                "Delegate is not invoked in Edit mode. Instead, the default value is returned."),
-            new GUIContent(
-                "Return Mock Value",
-                "Delegate is not invoked in Edit mode. Instead, a mock value is returned."),
-            new GUIContent(
-                "Invoke Delegate",
-                "Delegate is invoked as normal in Edit mode.")
-        };
+            public readonly SerializedProperty property;
 
-        private static readonly Dictionary<Type, UnityReturnDelegateBase> _dummyCache = new();
+            public readonly SerializedProperty target;
+            public readonly SerializedProperty staticTargetType;
+            public readonly SerializedProperty targetingStaticMember;
+            public readonly SerializedProperty methodName;
+            public readonly SerializedProperty argumentsDefinedByEvent;
+            public readonly SerializedProperty policy;
+            public readonly SerializedProperty editorBehaviour;
+            public readonly SerializedProperty editorMockValue;
+
+            public PropertyCache(SerializedProperty property)
+            {
+                this.property = property;
+
+                target = property.FindPropertyRelative("m_target");
+                staticTargetType = property.FindPropertyRelative("m_staticTargetType");
+                targetingStaticMember = property.FindPropertyRelative("m_targetingStaticMember");
+                methodName = property.FindPropertyRelative("m_methodName");
+                argumentsDefinedByEvent = property.FindPropertyRelative("m_argumentsDefinedByEvent");
+
+                policy = property.FindPropertyRelative("m_policy");
+                editorBehaviour = property.FindPropertyRelative("m_editorBehaviour");
+                editorMockValue = property.FindPropertyRelative("m_editorMockValue");
+            }
+        }
+
+        private readonly struct Context
+        {
+            public readonly PropertyCache properties;
+            public readonly ValueMemberInfo serializedMember;
+            public readonly DelegateMetadata metadata;
+            public readonly State state;
+
+            public Context(PropertyCache properties, ValueMemberInfo serializedMember, DelegateMetadata metadata, State state)
+            {
+                this.properties = properties;
+                this.serializedMember = serializedMember;
+                this.metadata = metadata;
+                this.state = state;
+            }
+        }
+
+        private static readonly GenericMenu.MenuFunction2 _assignMethodCallback = AssignMethod;
+
+        private static readonly Dictionary<string, PropertyCache> _propertyCache = new();
         private static readonly Dictionary<string, ValueMemberInfo> _memberCache = new();
         private static readonly Dictionary<string, State> _stateCache = new();
+        private static readonly List<AssignMethodArguments> _assignArgsCache = new(capacity: 64);
 
-        private static Type BaseType => typeof(UnityReturnDelegateBase);
+        private static Context _context;
+        private static int _assignOptionIndex;
 
         [DidReloadScripts]
         [InitializeOnLoadMethod]
         private static void OnRecompile()
         {
-            _dummyCache.Clear();
+            _propertyCache.Clear();
             _memberCache.Clear();
             _stateCache.Clear();
-        }
-
-        private static int CompareDisplayOrder(MemberInfo x, MemberInfo y)
-        {
-            bool xIsProperty = x is PropertyInfo;
-            bool yIsProperty = y is PropertyInfo;
-
-            int comp = yIsProperty.CompareTo(xIsProperty);
-            if (comp == 0)
-            {
-                comp = StringComparer.Ordinal.Compare(x.Name, y.Name);
-            }
-
-            return comp;
-        }
-
-        private static UnityReturnDelegateBase GetDummy(Type type)
-        {
-            if (!_dummyCache.TryGetValue(type, out var del))
-            {
-                del = (UnityReturnDelegateBase)Activator.CreateInstance(type);
-                _dummyCache[type] = del;
-            }
-            return del;
+            _assignArgsCache.Clear();
         }
 
         private static ValueMemberInfo GetMember(SerializedProperty property)
@@ -109,79 +114,77 @@ namespace JakePerry.Unity.Events
             return member;
         }
 
+        private static PropertyCache GetChildProperties(SerializedProperty property)
+        {
+            var path = property.propertyPath;
+            if (!_propertyCache.TryGetValue(path, out var cache) ||
+                cache.property.serializedObject != property.serializedObject)
+            {
+                cache = new PropertyCache(property);
+                _propertyCache[path] = cache;
+            }
+            return cache;
+        }
+
         private static State GetState(SerializedProperty property)
         {
             var path = property.propertyPath;
             if (!_stateCache.TryGetValue(path, out var state))
             {
-                state = new State()
-                {
-                    // TODO
-                };
+                state = new State();
                 _stateCache[path] = state;
             }
             return state;
         }
 
-        private static string GetNiceTypeName(Type type)
+        private static void DrawHintIcon(Rect rect, string tooltip)
         {
-            if (type == typeof(bool)) return "bool";
-            if (type == typeof(byte)) return "byte";
-            if (type == typeof(sbyte)) return "sbyte";
-            if (type == typeof(char)) return "char";
-            if (type == typeof(float)) return "float";
-            if (type == typeof(double)) return "double";
-            if (type == typeof(decimal)) return "decimal";
-            if (type == typeof(short)) return "short";
-            if (type == typeof(int)) return "int";
-            if (type == typeof(long)) return "long";
-            if (type == typeof(ushort)) return "ushort";
-            if (type == typeof(uint)) return "uint";
-            if (type == typeof(ulong)) return "ulong";
-            if (type == typeof(nint)) return "nint";
-            if (type == typeof(nuint)) return "nuint";
-            if (type == typeof(string)) return "string";
-            if (type == typeof(object)) return "object";
-            if (type == typeof(UnityEngine.Object)) return "UnityEngine.Object";
-            return type.Name;
+            var icon = UnityEditorHelper.GetMessageIcon(MessageType.Error);
+            var iconStyle = EditorStyles.iconButton;
+            rect = iconStyle.margin.Remove(rect);
+
+            var hintContent = GetTempContent(icon);
+            hintContent.tooltip = tooltip;
+
+            EditorGUI.LabelField(rect, hintContent, iconStyle);
         }
 
-        private static Type GetReturnType(UnityReturnDelegateBase del)
+        private static void AssignMethod(object e)
         {
-            const BindingFlags kFlags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var args = (AssignMethodArguments)e;
 
-            var property = ReflectionEx.GetProperty(BaseType, "ReturnType", kFlags);
-            return (Type)property.GetValue(del);
+            // TODO: Assign, validate arguments, etc.
+            // member could be a method or property.
         }
 
-        private static void GetArgumentString<T>(T argTypes, StringBuilder sb)
-            where T : IEnumerable<Type>
+        private static void AddMemberSelectOption(
+            GenericMenu menu,
+            string name,
+            bool on,
+            ref int index,
+            SerializedProperty property,
+            MemberInfo member,
+            bool dynamicArguments)
         {
-            sb.Append('(');
+            var args = index >= _assignArgsCache.Count
+                ? new AssignMethodArguments()
+                : _assignArgsCache[index];
 
-            bool flag = false;
-            foreach (var t in argTypes)
-            {
-                if (flag) sb.Append(", ");
-                sb.Append(GetNiceTypeName(t));
+            ++index;
 
-                flag = true;
-            }
+            args.property = property;
+            args.member = member;
+            args.dynamicArguments = dynamicArguments;
 
-            sb.Append(')');
+            menu.AddItem(new GUIContent(name), on, _assignMethodCallback, args);
         }
 
-        private static string GetArgumentString<T>(T argTypes)
-            where T : IEnumerable<Type>
+        private void DrawHeader(Rect rect, GUIContent label)
         {
-            var sb = StringBuilderCache.Acquire();
-            GetArgumentString(argTypes, sb);
+            // TODO: Consider supporting argument coloring for header signature
+            // TODO: Consider showing small error icon on left of name if any errors are present.
+            //       Will need to draw header last in that case
 
-            return StringBuilderCache.GetStringAndRelease(sb);
-        }
-
-        private void DrawHeader(Rect rect, State state, UnityReturnDelegateBase dummy, GUIContent label)
-        {
             var backgroundRect = rect;
             rect = rect.PadLeft(6);
 
@@ -211,7 +214,7 @@ namespace JakePerry.Unity.Events
                 var tabStyle = EditorGUIEx.Styles.DockArea.DragTab;
 
                 var mousePos = evt.mousePosition;
-                bool isViewingAdvanced = state.viewingAdvancedSettings;
+                bool isViewingAdvanced = _context.state.viewingAdvancedSettings;
 
                 basicBtnRect.y += tabStyle.margin.top;
                 tabStyle.Draw(basicBtnRect, isHover: basicBtnRect.Contains(mousePos), isActive: !isViewingAdvanced, on: false, hasKeyboardFocus: GUIUtility.keyboardControl == basicBtnId);
@@ -226,23 +229,34 @@ namespace JakePerry.Unity.Events
             {
                 if (EditorGUIEx.ProcessGuiClickEvent(evt, basicBtnRect, basicBtnId))
                 {
-                    state.viewingAdvancedSettings = false;
+                    _context.state.viewingAdvancedSettings = false;
                 }
                 if (EditorGUIEx.ProcessGuiClickEvent(evt, advancedBtnRect, advancedBtnId))
                 {
-                    state.viewingAdvancedSettings = true;
+                    _context.state.viewingAdvancedSettings = true;
                 }
             }
 
             rect.width -= advancedBtnRect.width + 20f;
             rect = rect.PadTop(1);
 
-            var returnType = GetReturnType(dummy);
+            var metadata = _context.metadata;
 
-            var dynamicParameters = dummy.GetEventDefinedInvocationArgumentTypes();
+            var dynamicParameters = metadata.eventDefinedArgs;
+
+            var sb = StringBuilderCache.Acquire();
+
+            // TODO: Cache GetArgumentString result in the metadata, or perhaps this entire header string.
+            sb.Append(GetNiceTypeName(metadata.returnType));
+            sb.Append(' ');
+            sb.Append(string.IsNullOrEmpty(label.text) ? "Delegate" : label.text);
+            GetArgumentString(dynamicParameters, sb);
+
+            var contentText = StringBuilderCache.GetStringAndRelease(sb);
+
             var headerContent = new GUIContent()
             {
-                text = $"{returnType.Name} {label.text ?? string.Empty} {GetArgumentString(dynamicParameters)}",
+                text = contentText,
                 tooltip = label.tooltip
             };
 
@@ -272,20 +286,19 @@ namespace JakePerry.Unity.Events
             // TODO: Also consider putting a help box here with info stating that
             // invoking runtime logic may be dangerous.
 
-            var policyProp = property.FindPropertyRelative("m_policy");
+            var policyProp = _context.properties.policy;
+            var behaviourProp = _context.properties.editorBehaviour;
+            var modeProp = _context.properties.targetingStaticMember;
+
             var policy = policyProp.intValue;
+            var behaviour = behaviourProp.intValue;
+            bool @static = modeProp.boolValue;
 
             var policyRect = rect.WithHeight(LineHeight);
             rect = rect.PadTop(LineHeight + Spacing);
 
-            var behaviourProp = property.FindPropertyRelative("m_editorBehaviour");
-            var behaviour = behaviourProp.intValue;
-
             var behaviourRect = rect.WithHeight(LineHeight);
             rect = rect.PadTop(LineHeight + Spacing);
-
-            var modeProp = property.FindPropertyRelative("m_targetingStaticMember");
-            bool @static = modeProp.boolValue;
 
             var labelContent = GetTempContent(
                 text: "Destroyed Target Policy",
@@ -295,7 +308,7 @@ namespace JakePerry.Unity.Events
             EditorGUI.BeginChangeCheck();
             using (new EditorGUI.DisabledScope(@static))
             {
-                policy = EditorGUI.Popup(policyRect, policy, _policyOptions);
+                policy = EditorGUI.Popup(policyRect, policy, PolicyOptions);
             }
 
             if (EditorGUI.EndChangeCheck()) policyProp.intValue = policy;
@@ -303,14 +316,14 @@ namespace JakePerry.Unity.Events
             behaviourRect = EditorGUI.PrefixLabel(behaviourRect, GetTempContent("Editor Behaviour"));
 
             EditorGUI.BeginChangeCheck();
-            behaviour = EditorGUI.Popup(behaviourRect, behaviour, _editorInvocationOptions);
+            behaviour = EditorGUI.Popup(behaviourRect, behaviour, EditorInvocationOptions);
 
             if (EditorGUI.EndChangeCheck()) behaviourProp.intValue = behaviour;
 
             if (behaviour == UnityReturnDelegateBase.EditorBehaviours.kReturnMockValue)
             {
                 Rect mockValueRect;
-                var mockProp = property.FindPropertyRelative("m_editorMockValue");
+                var mockProp = _context.properties.editorMockValue;
                 if (mockProp == null)
                 {
                     mockValueRect = rect.WithHeight(LineHeight);
@@ -351,13 +364,15 @@ namespace JakePerry.Unity.Events
             return EditorGUIEx.CustomGuiButton(rect, id, EditorGUIEx.Styles.GetStyle("m_IconButton"), iconContent);
         }
 
-        private void DrawTarget(ref Rect rect, SerializedProperty property)
+        private void DrawTarget(ref Rect rect)
         {
-            var modeProp = property.FindPropertyRelative("m_targetingStaticMember");
-            bool @static = modeProp.boolValue;
+            var property = _context.properties.property;
 
-            var staticTargetProp = property.FindPropertyRelative("m_staticTargetType");
-            var targetProp = property.FindPropertyRelative("m_target");
+            var modeProp = _context.properties.targetingStaticMember;
+            var staticTargetProp = _context.properties.staticTargetType;
+            var targetProp = _context.properties.target;
+
+            bool @static = modeProp.boolValue;
 
             var targetRect = rect;
 
@@ -421,42 +436,22 @@ namespace JakePerry.Unity.Events
             return list;
         }
 
-        private static string GetNiceMemberString(MemberInfo member, bool dynamic)
+        private static string GetNiceMemberString(MemberInfo member, bool includeReturnType)
         {
-            StringBuilder sb;
             if (member is PropertyInfo p)
             {
-                sb = StringBuilderCache.Acquire();
-
-                if (!dynamic)
-                {
-                    sb.Append(GetNiceTypeName(p.PropertyType));
-                    sb.Append(' ');
-                }
-
-                sb.Append(p.Name);
-                sb.Append(" { get; }");
-
-                return StringBuilderCache.GetStringAndRelease(sb);
+                return GetNicePropertyString(p, includeReturnType, PropertyMethodType.Get);
             }
 
-            if (dynamic) return member.Name;
-
-            var method = member as MethodInfo;
-            var paramTypes = System.Linq.Enumerable.Select(method.GetParameters(), p => p.ParameterType);
-
-            sb = StringBuilderCache.Acquire();
-
-            sb.Append(GetNiceTypeName(method.ReturnType));
-            sb.Append(' ');
-            sb.Append(member.Name);
-            GetArgumentString(paramTypes, sb);
-
-            return StringBuilderCache.GetStringAndRelease(sb);
+            return GetNiceMethodString(member as MethodInfo, includeReturnType);
         }
 
-        private GenericMenu BuildStaticMemberPopupList(Type declaringType, SerializedProperty property)
+        private GenericMenu BuildStaticMemberPopupList(Type declaringType, MethodInfo currentMethod)
         {
+            var metadata = _context.metadata;
+            var property = _context.properties.property;
+            var definedByEvent = _context.properties.argumentsDefinedByEvent.boolValue;
+
             // TODO: Idea, Invocation Argument base class is used for all the
             // serializable arguments. If there was a system that could bind
             // these types, the system could be extended to support methods
@@ -466,13 +461,9 @@ namespace JakePerry.Unity.Events
 
             var menu = new GenericMenu();
 
-            menu.AddItem(new GUIContent("None"), false, null);
+            AddMemberSelectOption(menu, "None", currentMethod is null, ref _assignOptionIndex, property, null, true);
 
-            var serializedMember = GetMember(property);
-            var dummy = GetDummy(serializedMember.MemberType);
-            var returnType = GetReturnType(dummy);
-
-            var list = GetMembersWithReturnType(declaringType, returnType);
+            var list = GetMembersWithReturnType(declaringType, metadata.returnType);
 
             list.RemoveAll(m =>
             {
@@ -482,9 +473,9 @@ namespace JakePerry.Unity.Events
 
                 return !isStatic;
             });
-            list.Sort(CompareDisplayOrder);
+            list.Sort(CompareMemberDisplayOrder);
 
-            var dynamicParams = dummy.GetEventDefinedInvocationArgumentTypes();
+            var dynamicParams = metadata.eventDefinedArgs;
             var dynamicParameterCount = dynamicParams.Length;
 
             var list2 = new List<MemberInfo>();
@@ -524,40 +515,42 @@ namespace JakePerry.Unity.Events
             {
                 menu.AddSeparator(string.Empty);
 
-                // TODO: Determine if the return type should show before "Dynamic" string
-                var sb = StringBuilderCache.Acquire();
-                sb.Append("Dynamic ");
-                GetArgumentString(dynamicParams, sb);
-
-                menu.AddItem(new GUIContent(sb.ToString()), false, null);
-
-                StringBuilderCache.Release(sb);
+                menu.AddItem(new GUIContent("Dynamic Arguments"), false, null);
 
                 foreach (var m in list2)
                 {
-                    // TODO: On state, callback.
-                    menu.AddItem(new GUIContent(GetNiceMemberString(m, true)), false, null);
+                    bool on = currentMethod == m && definedByEvent;
+                    AddMemberSelectOption(menu, GetNiceMemberString(m, false), on, ref _assignOptionIndex, property, m, true);
                 }
             }
 
             list2.Clear();
 
+            bool anyReturnsSubclass = false;
             foreach (var m in list)
             {
                 // TODO: Match static args. Just anything thats actually serializable as InvocationArgument.
+
+                if (!anyReturnsSubclass)
+                {
+                    anyReturnsSubclass = ((m is PropertyInfo p) ? p.PropertyType : (m as MethodInfo).ReturnType) != metadata.returnType;
+                }
+
                 list2.Add(m);
             }
 
             if (list2.Count > 0)
             {
+                bool includeReturnType = anyReturnsSubclass;
+
                 menu.AddSeparator(string.Empty);
 
                 menu.AddItem(new GUIContent("Static Arguments"), false, null);
 
                 foreach (var m in list2)
                 {
-                    // TODO: On state, callback.
-                    menu.AddItem(new GUIContent(GetNiceMemberString(m, false)), false, null);
+                    bool on = currentMethod == m && !definedByEvent;
+                    AddMemberSelectOption(menu, GetNiceMemberString(m, includeReturnType), on, ref _assignOptionIndex, property, m, false);
                 }
             }
 
@@ -577,24 +570,23 @@ namespace JakePerry.Unity.Events
             return null;
         }
 
-        private void DrawMethod(Rect rect, SerializedProperty property, bool didChange)
+        private void DrawMethod(Rect rect)
         {
-            var methodNameProp = property.FindPropertyRelative("m_methodName");
+            var property = _context.properties.property;
 
-            if (didChange)
-            {
-                methodNameProp.stringValue = null;
-            }
+            var methodNameProp = _context.properties.methodName;
+            var modeProp = _context.properties.targetingStaticMember;
 
             EditorGUI.BeginProperty(rect, GUIContent.none, methodNameProp);
 
-            var modeProp = property.FindPropertyRelative("m_targetingStaticMember");
             bool @static = modeProp.boolValue;
 
             // TODO: Thoroughly test behaviour with multi selection
 
             GUIContent c;
             object invocationTarget = null;
+            MethodInfo currentMethod = null;
+            string methodResolveError = null;
 
             if (modeProp.hasMultipleDifferentValues)
             {
@@ -604,6 +596,9 @@ namespace JakePerry.Unity.Events
             }
             else if (methodNameProp.hasMultipleDifferentValues)
             {
+                // TODO: Validation check if any of the targets have unresolvable method.
+                //       This can be done by iterating property.serializedObject.targets,
+                //       Creating new SerializedObject for each of them, then checking as is done below.
                 c = EditorGUIEx.MixedValueContent;
             }
             else
@@ -612,9 +607,7 @@ namespace JakePerry.Unity.Events
 
                 if (@static)
                 {
-                    var staticTargetProp = property.FindPropertyRelative("m_staticTargetType");
-
-                    var typeDef = SerializeTypeDefinition.EditorUtil.GetTypeDefinition(staticTargetProp);
+                    var typeDef = SerializeTypeDefinition.EditorUtil.GetTypeDefinition(_context.properties.staticTargetType);
                     var type = typeDef.IsNull ? null : typeDef.ResolveType(throwOnError: false);
 
                     if (type is null)
@@ -628,7 +621,7 @@ namespace JakePerry.Unity.Events
                 }
                 else
                 {
-                    var targetProp = property.FindPropertyRelative("m_target");
+                    var targetProp = _context.properties.target;
                     var targetObj = targetProp.objectReferenceValue;
 
                     if (targetObj == null)
@@ -653,7 +646,37 @@ namespace JakePerry.Unity.Events
                     //else if (!IsPersistentListenerValid) { }
                     else
                     {
+                        var metadata = _context.metadata;
+
                         var invocationType = invocationTarget is Type t ? t : invocationTarget.GetType();
+
+                        Type[] currentArgumentTypes;
+                        var definedByEvent = _context.properties.argumentsDefinedByEvent.boolValue;
+                        if (definedByEvent)
+                        {
+                            currentArgumentTypes = metadata.eventDefinedArgs;
+                        }
+                        else
+                        {
+                            // TODO: Get the arg types. UnityReturnDelegateBase.GetCachedInvocationArgumentTypes
+                            // does this but we don't actually have the InvocationArgument[] at this point (wrapped in SerializedProperty).
+                            // Consider breaking it out to work per-type. Still gotta account for multi-values here.
+                            currentArgumentTypes = Array.Empty<Type>();
+                        }
+
+                        currentMethod = UnityReturnDelegateBase.GetValidMethodInfo(invocationType, @static, methodNameProp.stringValue, metadata.returnType, currentArgumentTypes, out methodResolveError);
+
+                        bool methodIsMissing = currentMethod is null && !string.IsNullOrEmpty(methodNameProp.stringValue);
+                        if (methodIsMissing)
+                        {
+                            if (methodResolveError is null)
+                            {
+                                methodResolveError =
+                                    "Method was not found. This may indicate that the method has been refactored since this delegate was serialized.";
+                            }
+
+                            sb.Append("<Missing> ");
+                        }
 
                         sb.Append(invocationType.Name);
                         sb.Append('.');
@@ -667,10 +690,23 @@ namespace JakePerry.Unity.Events
                         {
                             sb.Append(methodNameProp.stringValue);
                         }
+
+                        if (methodIsMissing && definedByEvent)
+                        {
+                            // TODO: Append serialized argument types. This may help debug why it's missing.
+                        }
                     }
                 }
 
                 c = new GUIContent(StringBuilderCache.GetStringAndRelease(sb));
+            }
+
+            if (methodResolveError is not null)
+            {
+                var hintRect = rect.WithWidth(LineHeight, anchorRight: true);
+                rect = rect.PadRight(hintRect.width + Spacing);
+
+                DrawHintIcon(hintRect, methodResolveError);
             }
 
             // TODO: Have an icon indicating if the current assigned method is dynamic or static args.
@@ -681,23 +717,17 @@ namespace JakePerry.Unity.Events
                     if (@static)
                     {
                         Debug.Assert(invocationTarget is Type);
-                        BuildStaticMemberPopupList((Type)invocationTarget, property).DropDown(rect);
+                        BuildStaticMemberPopupList((Type)invocationTarget, currentMethod).DropDown(rect);
                     }
                     else
                     {
                         Debug.Assert(invocationTarget is UnityEngine.Object);
                         BuildInstanceMemberPopupList((UnityEngine.Object)invocationTarget);
                     }
-                    // TODO
                 }
             }
 
             EditorGUI.EndProperty();
-        }
-
-        private void DrawArguments(Rect rect, SerializedProperty property)
-        {
-
         }
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
@@ -705,6 +735,7 @@ namespace JakePerry.Unity.Events
             // TODO: Use an AnimBool etc when swapping between basic/advanced settings
 
             var state = GetState(property);
+            var properties = GetChildProperties(property);
 
             // Header content + body padding
             float height = kHeaderHeight + 10f + Spacing;
@@ -714,11 +745,10 @@ namespace JakePerry.Unity.Events
                 height += LineHeight + LineHeight + Spacing;
                 // TODO: Args height
 
-                var behaviourProp = property.FindPropertyRelative("m_editorBehaviour");
-                var behaviour = behaviourProp.intValue;
+                var behaviour = properties.editorBehaviour.intValue;
                 if (behaviour == UnityReturnDelegateBase.EditorBehaviours.kReturnMockValue)
                 {
-                    var mockProp = property.FindPropertyRelative("m_editorMockValue");
+                    var mockProp = properties.editorMockValue;
 
                     height += Spacing;
                     height += mockProp != null
@@ -728,15 +758,12 @@ namespace JakePerry.Unity.Events
             }
             else
             {
-                var @static = property.FindPropertyRelative("m_targetingStaticMember").boolValue;
-                var definedByEvent = property.FindPropertyRelative("m_argumentsDefinedByEvent").boolValue;
-
-                float targetHeight = @static
-                    ? SerializeTypeDefinitionDrawer.GetPropertyHeight(property.FindPropertyRelative("m_staticTargetType"), false)
+                float targetHeight = properties.targetingStaticMember.boolValue
+                    ? SerializeTypeDefinitionDrawer.GetPropertyHeight(properties.staticTargetType, false)
                     : LineHeight;
 
                 var methodAndArgsHeight = LineHeight;
-                if (!definedByEvent)
+                if (!properties.argumentsDefinedByEvent.boolValue)
                 {
                     // TODO: Calc arguments height
                     methodAndArgsHeight += 0;
@@ -755,51 +782,61 @@ namespace JakePerry.Unity.Events
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
-            var state = GetState(property);
-            var member = GetMember(property);
-            var eventType = member.MemberType;
-            var dummy = GetDummy(eventType);
+            _assignOptionIndex = 0;
 
-            // This is added as padding before next element
-            position.height -= kNextElementSpacing;
+            var serializedMember = GetMember(property);
 
-            var headerRect = position.WithHeight(kHeaderHeight);
-            position = position.PadTop(headerRect.height + Spacing);
-
-            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+            try
             {
-                DrawHeader(headerRect, state, dummy, label);
+                var state = GetState(property);
+                var metadata = DelegateMetadata.GetMetadata(serializedMember.MemberType);
+                _context = new Context(GetChildProperties(property), serializedMember, metadata, state);
 
-                DrawBodyBackground(position);
-                position = position.Pad(left: 4, right: 4, top: 6, bottom: 4);
+                // This is added as padding before next element
+                position.height -= kNextElementSpacing;
 
-                if (state.viewingAdvancedSettings)
+                var headerRect = position.WithHeight(kHeaderHeight);
+                position = position.PadTop(headerRect.height + Spacing);
+
+                using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
                 {
-                    DrawAdvancedSettings(position, property);
+                    DrawHeader(headerRect, label);
 
-                    // TODO: Option to
-                    // 1. [Default] return a mock value specifically for editor
-                    // 2. Invoke as normal
-                    // If returning mock value, allow it to be set in editor if its a serializable type,
-                    // otherwise show a label warning that 'default' value will be returned
-                }
-                else
-                {
-                    var leftColumnRect = position.WithWidth(position.width * 0.38f);
-                    var rightColumnRect = position.PadLeft(leftColumnRect.width + Spacing + Spacing);
+                    DrawBodyBackground(position);
+                    position = position.Pad(left: 4, right: 4, top: 6, bottom: 4);
 
-                    EditorGUI.BeginChangeCheck();
+                    if (state.viewingAdvancedSettings)
+                    {
+                        DrawAdvancedSettings(position, property);
 
-                    DrawTarget(ref leftColumnRect, property);
+                        // TODO: Option to
+                        // 1. [Default] return a mock value specifically for editor
+                        // 2. Invoke as normal
+                        // If returning mock value, allow it to be set in editor if its a serializable type,
+                        // otherwise show a label warning that 'default' value will be returned
+                    }
+                    else
+                    {
+                        var leftColumnRect = position.WithWidth(position.width * 0.38f);
+                        var rightColumnRect = position.PadLeft(leftColumnRect.width + Spacing + Spacing);
 
-                    bool targetChanged = EditorGUI.EndChangeCheck();
+                        EditorGUI.BeginChangeCheck();
 
-                    // TODO: Does this need to calculate method content height or just pass by ref like DrawTarget?
-                    var methodRect = rightColumnRect.WithHeight(LineHeight);
+                        DrawTarget(ref leftColumnRect);
 
-                    DrawMethod(methodRect, property, targetChanged);
+                        if (EditorGUI.EndChangeCheck())
+                        {
+                            _context.properties.methodName.stringValue = null;
+                        }
+
+                        // TODO: Does this need to calculate method content height or just pass by ref like DrawTarget?
+                        var methodRect = rightColumnRect.WithHeight(LineHeight);
+
+                        DrawMethod(methodRect);
+                    }
                 }
             }
+            finally { _context = default; }
         }
     }
 }

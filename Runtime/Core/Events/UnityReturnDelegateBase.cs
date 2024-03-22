@@ -45,7 +45,7 @@ namespace JakePerry.Unity.Events
         private bool m_dirty = true;
         private RuntimeInvocableCall m_call;
 
-        protected abstract Type ReturnType { get; }
+        internal protected abstract Type ReturnType { get; }
 
         /// <summary>
         /// Indicates the error handling policy that should be enacted when the invocation
@@ -73,9 +73,14 @@ namespace JakePerry.Unity.Events
         internal protected abstract Type[] GetEventDefinedInvocationArgumentTypes();
         internal abstract RuntimeInvocableCall ConstructDelegateCall(object target, MethodInfo method);
 
-        private static MethodInfo GetValidMethodInfo(Type objectType, string methodName, Type returnType, Type[] argTypes)
+        internal static MethodInfo GetValidMethodInfo(Type objectType, bool @static, string methodName, Type returnType, Type[] argTypes, out string error)
         {
-            var flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+            const BindingFlags kFlagsStatic = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+            const BindingFlags kFlagsInstance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+            error = null;
+
+            var flags = @static ? kFlagsStatic : kFlagsInstance;
 
             MethodInfo matchWithIncorrectReturn = null;
 
@@ -144,15 +149,23 @@ namespace JakePerry.Unity.Events
 
             if (matchWithIncorrectReturn is not null)
             {
-                if (ReturnDelegatesConfig.ErrorLoggingEnabled)
-                {
-                    // TODO: Log an error stating that a method was found but return type was incorrect.
-                    // Likely a signature change since serialization.
-                    ReturnDelegatesUtility.LogError("");
-                }
+                error = "Method was found but has an unexpected return type. This may indicate that the method has been refactored " +
+                    "since this delegate was serialized, or the delegate referenced a method on a parent type which has since been removed.";
             }
 
             return null;
+        }
+
+        internal static MethodInfo GetValidMethodInfo(Type objectType, bool @static, string methodName, Type returnType, Type[] argTypes)
+        {
+            var method = GetValidMethodInfo(objectType, @static, methodName, returnType, argTypes, out string error);
+
+            if (error is not null && ReturnDelegatesConfig.ErrorLoggingEnabled)
+            {
+                ReturnDelegatesUtility.LogError(error);
+            }
+
+            return method;
         }
 
         private static Type[] GetCachedInvocationArgumentTypes(InvocationArgument[] args)
@@ -230,7 +243,7 @@ namespace JakePerry.Unity.Events
                 : GetCachedInvocationArgumentTypes(m_arguments);
 
             var returnType = ReturnType;
-            return GetValidMethodInfo(targetType, m_methodName, returnType, argTypes);
+            return GetValidMethodInfo(targetType, m_targetingStaticMember, m_methodName, returnType, argTypes);
         }
 
         private Type ResolveInvocationType()
@@ -350,7 +363,7 @@ namespace JakePerry.Unity.Events
 
 #endif // UNITY_EDITOR
 
-        protected sealed override Type ReturnType => typeof(TResult);
+        internal protected sealed override Type ReturnType => typeof(TResult);
 
         internal sealed override IInvocableCall ConstructEditorModeCall()
         {

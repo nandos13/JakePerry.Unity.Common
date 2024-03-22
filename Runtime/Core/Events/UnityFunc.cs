@@ -1,5 +1,7 @@
 namespace JakePerry.Unity.Events
 {
+    // TODO: Consider just using Func type
+
     public delegate TResult UnityFunc<out TResult>();
 
     public delegate TResult UnityFunc<in T0, out TResult>(T0 arg0);
