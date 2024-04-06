@@ -61,6 +61,8 @@ namespace JakePerry.Unity
             }
         }
 
+        protected virtual bool EnableSearchBar => true;
+
         protected abstract string Title { get; }
 
         protected int CurrentControlId => m_controlId;
@@ -83,6 +85,10 @@ namespace JakePerry.Unity
         {
             return new GUIStyle(EditorStyles.boldLabel);
         }
+
+        protected virtual void OnEnterKeyPress() { }
+
+        protected virtual void OnSearchFilterChanged() { }
 
         /// <summary>
         /// Send an event to the GUI View which opened the selector window.
@@ -115,12 +121,6 @@ namespace JakePerry.Unity
             }
         }
 
-        protected abstract void DrawBodyGUI();
-
-        protected virtual void OnEnterKeyPress() { }
-
-        protected virtual void OnSearchFilterChanged() { }
-
         private static T GetSharedInstance<T>()
             where T : AbstractSelectorWindow
         {
@@ -152,28 +152,6 @@ namespace JakePerry.Unity
             inst.ShowAuxWindow();
 
             return inst;
-        }
-
-        private void ClearSearchFilter()
-        {
-            bool flag = m_searchWords.Count > 0;
-
-            m_searchFilter = null;
-            m_searchWords.Clear();
-
-            if (flag)
-            {
-                OnSearchFilterChanged();
-            }
-        }
-
-        private void RecordWindowSize()
-        {
-            var rect = base.position;
-            var typeGuid = this.GetType().GUID.ToString("N");
-
-            EditorPrefs.SetFloat(kWidthPref + typeGuid, rect.width);
-            EditorPrefs.SetFloat(kHeightPref + typeGuid, rect.height);
         }
 
         private void DrawSearchBar()
@@ -215,6 +193,38 @@ namespace JakePerry.Unity
             }
         }
 
+        protected virtual void DrawHeaderGUI()
+        {
+            if (EnableSearchBar)
+            {
+                DrawSearchBar();
+            }
+        }
+
+        protected abstract void DrawBodyGUI();
+
+        private void ClearSearchFilter()
+        {
+            bool flag = m_searchWords.Count > 0;
+
+            m_searchFilter = null;
+            m_searchWords.Clear();
+
+            if (flag)
+            {
+                OnSearchFilterChanged();
+            }
+        }
+
+        private void RecordWindowSize()
+        {
+            var rect = base.position;
+            var typeGuid = this.GetType().GUID.ToString("N");
+
+            EditorPrefs.SetFloat(kWidthPref + typeGuid, rect.width);
+            EditorPrefs.SetFloat(kHeightPref + typeGuid, rect.height);
+        }
+
         private bool SearchBoxHasFocus()
         {
             // TODO: Not happy with the gui control name solution, seems to now always take focus
@@ -239,7 +249,7 @@ namespace JakePerry.Unity
         {
             HandleKeyboardInput();
 
-            DrawSearchBar();
+            DrawHeaderGUI();
 
             m_scroll = EditorGUILayout.BeginScrollView(m_scroll);
             {

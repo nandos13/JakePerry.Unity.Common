@@ -1,9 +1,14 @@
 using JakePerry.Collections;
+using JakePerry.Threading.Tasks;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEditor.AnimatedValues;
 using UnityEditor.Callbacks;
@@ -14,38 +19,60 @@ using static JakePerry.Unity.EditorHelpersStatic;
 
 namespace JakePerry.Unity
 {
-    // TODO: Add extra buttons next to the search bar to filter by class, struct, etc.
-    // (when applicable of course, if generic constraint already enforces one, then lock it).
-
     [RequiresConstantRepaint]
     public sealed class TypeSelector : AbstractSelectorWindow
     {
+        private const string kBuiltInTypesIdentifier = "__typeselector_builtin";
+
         private const float kIndent = 30;
         private const float kFoldoutSize = 20;
 
         private const float kHoverLerpTerm = 0.3f;
+
+        private const char kCheckMark = (char)0x2713;
 
         /// <summary>
         /// Denotes the name of the Unity GUI command sent when a type is selected.
         /// </summary>
         public const string SelectionUpdatedCommand = "TypeSelector_SelectedTypeUpdated";
 
-        private enum FilterState
+        private enum FilterState { Unfiltered = 0, Partial = 1, Hidden = 2 }
+
+        private sealed class ScanWorkItem
         {
-            /// <summary>
-            /// Namespace is not affected by the search filter.
-            /// </summary>
-            None = 0,
+            private readonly Assembly m_assembly;
 
-            /// <summary>
-            /// Some types in the namespace are filtered, but some are still available.
-            /// </summary>
-            Some = 1,
+            private string[] m_namespaces;
+            private ReadOnlyArray<Type>[] m_namespaceTypes;
 
-            /// <summary>
-            /// All types in the namespace are filtered and as such it can be skipped.
-            /// </summary>
-            All = 2
+            public Assembly Assembly => m_assembly;
+
+            public (string[] namespaces, ReadOnlyArray<Type>[] types) Result => (m_namespaces, m_namespaceTypes);
+
+            public ScanWorkItem(Assembly assembly)
+            {
+                m_assembly = assembly;
+            }
+
+            public void SetResult(string[] namespaces, ReadOnlyArray<Type>[] namespaceTypes)
+            {
+                m_namespaces = namespaces;
+                m_namespaceTypes = namespaceTypes;
+            }
+        }
+
+        private sealed class State
+        {
+            public readonly Type[] types;
+            public readonly BitArray hidden;
+            public AnimBool expanded;
+            public bool allHidden = false;
+
+            public State(Type[] types)
+            {
+                this.types = types;
+                hidden = new BitArray(types.Length);
+            }
         }
 
         private readonly struct TypeDisplayNames
@@ -62,20 +89,11 @@ namespace JakePerry.Unity
             }
         }
 
-        // TODO: Kill the Map class, maintain separate lists. Use BinarySearch, match index.
-        private sealed class Map
-        {
-            public readonly Namespace @namespace;
-            public readonly Type[] types;
-            public readonly AnimBool visible = new(false);
-            public FilterState filterState;
+        private static readonly object _scanLock = new object();
 
-            public Map(Namespace ns, Type[] types)
-            {
-                @namespace = ns;
-                this.types = types;
-            }
-        }
+        private static readonly List<string> _appDomainNamespaces = new(capacity: 2048);
+        private static readonly List<List<Type>> _typesInNamespace = new(capacity: 2048);
+        private static readonly HashSet<Assembly> _scannedAssemblies = new();
 
         private static readonly Dictionary<Type, TypeDisplayNames> _displayNameCache = new();
 
@@ -103,11 +121,8 @@ namespace JakePerry.Unity
         private static Type _selectedType;
         private static bool _invokingTypeSelectCommand;
 
-        private readonly HashSet<Type> m_typesMatchingCurrentFilter = new();
-        private readonly List<Map> m_typeMap = new(capacity: 2048);
-
-        private Map m_builtInMap;
-        private Map m_globalNamespaceMap;
+        private string[] m_namespaceMap;
+        private State[] m_stateArray;
 
         private GUIStyle m_namespaceStyle;
         private GUIStyle m_namespaceFullNameStyle;
@@ -116,6 +131,10 @@ namespace JakePerry.Unity
 
         private Type m_currentSelection;
 
+        private bool m_setupComplete;
+        private CancellationTokenSource m_cancelSource;
+        private readonly List<string> m_setupHintLines = new();
+
         // TODO: Consider adding a config file for specifying render colors?
         private static Color32 DefaultAliasColor => new Color32(86, 156, 214, 255);
         private static Color32 DefaultClassColor => new Color32(78, 201, 176, 255);
@@ -123,6 +142,8 @@ namespace JakePerry.Unity
         private static Color32 DefaultStructColor => new Color32(134, 198, 145, 255);
         private static Color32 NamespaceBackgroundColor => new Color32(40, 40, 40, 255);
         private static Color32 White32 => new Color32(255, 255, 255, 255);
+
+        private static StringComparer NamespaceComparer => StringComparer.OrdinalIgnoreCase;
 
         /// <summary>
         /// The <see cref="Type"/> that was selected by the user.
@@ -180,6 +201,13 @@ namespace JakePerry.Unity
         [InitializeOnLoadMethod]
         private static void OnRecompile()
         {
+            lock (_scanLock)
+            {
+                _scannedAssemblies.Clear();
+                _typesInNamespace.Clear();
+                _appDomainNamespaces.Clear();
+            }
+
             _displayNameCache.Clear();
 
             var sb = StringBuilderCache.Acquire();
@@ -210,7 +238,7 @@ namespace JakePerry.Unity
 
         private static int TypeSorter(Type x, Type y)
         {
-            return StringComparer.Ordinal.Compare(x.Name, y.Name);
+            return StringComparer.OrdinalIgnoreCase.Compare(x.Name, y.Name);
         }
 
         private static void HandleNestedTypeDisplayName(Type t, StringBuilder sb)
@@ -239,7 +267,7 @@ namespace JakePerry.Unity
             {
                 var sb = StringBuilderCache.Acquire();
 
-                string name, full, braced;
+                string name, filter, braced;
 
                 if (t.IsNested)
                 {
@@ -260,7 +288,7 @@ namespace JakePerry.Unity
                     sb.Append('.');
                     sb.Append(name);
 
-                    full = sb.ToString();
+                    filter = sb.ToString();
 
                     sb.Insert(0, '[');
                     sb.Append(']');
@@ -269,27 +297,16 @@ namespace JakePerry.Unity
                 }
                 else
                 {
-                    full = name;
+                    filter = name;
                     braced = null;
                 }
 
                 StringBuilderCache.Release(sb);
 
-                _displayNameCache[t] = result = new(name, full, braced);
+                _displayNameCache[t] = result = new(name, filter, braced);
             }
 
             return result;
-        }
-
-        private static bool IgnoreType(Type t)
-        {
-            if (t.IsDefined(typeof(CompilerGeneratedAttribute), false))
-                return true;
-
-            if (t.FullName.Contains("<PrivateImplementationDetails>", StringComparison.Ordinal))
-                return true;
-
-            return false;
         }
 
         private static bool MatchSearchTerms(string value, ReadOnlyList<Substring> searchTerms)
@@ -304,14 +321,24 @@ namespace JakePerry.Unity
             return true;
         }
 
-        private void CollapseChildren(Map map)
+        private void CollapseChildren(string namespc)
         {
-            var @namespace = map.@namespace;
-            foreach (var map2 in m_typeMap)
-                if (map2.@namespace.IsDescendantOf(@namespace))
+            int index = Array.BinarySearch(m_namespaceMap, namespc, NamespaceComparer);
+
+            for (int i = index + 1; i < m_namespaceMap.Length; ++i)
+            {
+                // Namespace map is sorted. All descendants will follow the current namespace in the list.
+                if (!m_namespaceMap[i].StartsWith(namespc, StringComparison.Ordinal))
                 {
-                    map2.visible.target = false;
+                    break;
                 }
+
+                var expanded = m_stateArray[i].expanded;
+                if (expanded is not null)
+                {
+                    expanded.target = false;
+                }
+            }
         }
 
         protected override void OnEnable()
@@ -319,6 +346,21 @@ namespace JakePerry.Unity
             base.OnEnable();
 
             m_currentSelection = null;
+        }
+
+        protected override void OnDisable()
+        {
+            base.OnDisable();
+
+            // Put the window into an uninitialized state
+            m_namespaceMap = null;
+            m_stateArray = null;
+
+            m_currentSelection = null;
+            m_setupComplete = false;
+
+            m_cancelSource?.Cancel();
+            m_cancelSource = null;
         }
 
         private void SendSelectEventAndClose()
@@ -336,18 +378,12 @@ namespace JakePerry.Unity
             GUIUtility.ExitGUI();
         }
 
-        private void DrawNamespaceHeader(Map map, int indentLevel)
+        private bool DrawNamespaceHeader(string namespc, int indentLevel, bool expanded)
         {
-            string name, fullName = null;
-            if (map == m_builtInMap) name = "Built in";
-            else if (map == m_globalNamespaceMap) name = "Global";
-            else
-            {
-                name = map.@namespace.Name;
-                fullName = map.@namespace.FullName;
-            }
-
-            var visible = map.visible;
+            string name;
+            if (namespc == kBuiltInTypesIdentifier) name = "Built in";
+            else if (string.IsNullOrEmpty(namespc)) name = "Global";
+            else name = NamespaceUtil.GetShortName(namespc);
 
             var style = NamespaceStyle;
 
@@ -372,37 +408,32 @@ namespace JakePerry.Unity
 
             if (current.type == EventType.Repaint)
             {
-                EditorGUI.Foldout(foldoutRect, visible.value, GUIContent.none);
+                EditorGUI.Foldout(foldoutRect, expanded, GUIContent.none);
                 style.Draw(rect, content, hover, false, false, false);
 
-                if (!string.IsNullOrEmpty(fullName) &&
-                    !StringComparer.Ordinal.Equals(fullName, name))
+                if (!string.IsNullOrEmpty(namespc) &&
+                    namespc != kBuiltInTypesIdentifier &&
+                    !StringComparer.Ordinal.Equals(namespc, name))
                 {
                     style.CalcMinMaxWidth(content, out float nameWidth, out _);
                     rect = rect.PadLeft(nameWidth + Spacing);
 
-                    content.text = fullName;
+                    content.text = namespc;
                     NamespaceFullNameStyle.Draw(rect, content, hover, false, false, false);
                 }
             }
             else if (current.type == EventType.MouseDown && hover)
             {
-                bool newVisibleState = !visible.value;
-
                 current.Use();
-                visible.target = newVisibleState;
-
-                // Collapsing a namespace also collapses all child namespaces
-                if (!newVisibleState)
-                {
-                    CollapseChildren(map);
-                }
+                return true;
             }
 
             // TODO: Figure out keyboard focus, support navigating with arrows.
             //       Left/right to expand collapse namespaces
             //       Will require GUIUtility.keyboardControl
             //       up/down arrows will need to cycle through entries, unsure how thats done
+
+            return false;
         }
 
         private void DrawType(Type t, int indentLevel, Color32? forceColor = null)
@@ -490,70 +521,83 @@ namespace JakePerry.Unity
             }
         }
 
-        private bool AnyTypesAvailable(Map map)
+        private void DrawMap(int index, int indentLevel)
         {
-            switch (map.filterState)
-            {
-                case FilterState.None:
-                    {
-                        if ((map.types?.Length ?? 0) > 0) return true;
-                        break;
-                    }
-
-                case FilterState.Some:
-                    {
-                        foreach (var t in map.types)
-                            if (m_typesMatchingCurrentFilter.Contains(t))
-                            {
-                                return true;
-                            }
-                        break;
-                    }
-            }
-
-            return false;
-        }
-
-        private void DrawMap(Map map, int indentLevel)
-        {
-            // TODO: Filter by 'jp', the Unity namespace shows but is empty when expanded.
+            var namespc = m_namespaceMap[index];
+            var state = m_stateArray[index];
+            bool isGlobal = namespc.Length == 0;
 
             // Skip if no types available in this namespace or any descendant namespaces.
-            if (!AnyTypesAvailable(map))
+            if (state.allHidden)
             {
-                foreach (var map2 in m_typeMap)
-                    if (map2.@namespace.IsDescendantOf(map.@namespace) &&
-                        AnyTypesAvailable(map2))
+                for (int i = index + 1; i < m_namespaceMap.Length; ++i)
+                {
+                    // Namespace map is sorted. All descendants will follow the current namespace in the list.
+                    if (!m_namespaceMap[i].StartsWith(namespc, StringComparison.Ordinal))
+                    {
+                        break;
+                    }
+
+                    if (!m_stateArray[i].allHidden)
                     {
                         goto PROCEED;
                     }
+                }
                 return;
             }
 
         PROCEED:
-            DrawNamespaceHeader(map, indentLevel);
-
-            var visible = map.visible;
-            if (visible.isAnimating || visible.value)
+            var expand = state.expanded;
+            if (DrawNamespaceHeader(namespc, indentLevel, expand?.value ?? false))
             {
-                EditorGUILayout.BeginFadeGroup(visible.faded);
+                state.expanded ??= new(false);
+                expand = state.expanded;
 
-                foreach (var map2 in m_typeMap)
-                    if (map2.@namespace.IsChildOf(map.@namespace))
+                bool newVisibleState = !expand.value;
+
+                expand.target = newVisibleState;
+
+                // Collapsing a namespace also collapses all child namespaces
+                if (!newVisibleState)
+                {
+                    CollapseChildren(namespc);
+                }
+            }
+
+            if (expand is not null && (expand.isAnimating || expand.value))
+            {
+                EditorGUILayout.BeginFadeGroup(expand.faded);
+
+                for (int i = index + 1; i < m_namespaceMap.Length; ++i)
+                {
+                    // Namespace map is sorted. All descendants will follow the current namespace in the list.
+                    if (!m_namespaceMap[i].StartsWith(namespc, StringComparison.Ordinal))
                     {
-                        DrawMap(map2, indentLevel + 1);
+                        break;
                     }
 
-                if (map.filterState != FilterState.All)
-                {
-                    Color32? forceColor = map == m_builtInMap ? DefaultAliasColor : null;
+                    // Don't draw the built-in collection as a child of any namespace
+                    if (m_namespaceMap[i] == kBuiltInTypesIdentifier) continue;
 
-                    bool checkFilterPerType = map.filterState == FilterState.Some;
-                    foreach (var t in map.types)
+                    bool isChild = isGlobal
+                        ? m_namespaceMap[i].LastIndexOf('.') == -1
+                        : m_namespaceMap[i].LastIndexOf('.') == namespc.Length;
+
+                    if (isChild)
                     {
-                        if (!checkFilterPerType || m_typesMatchingCurrentFilter.Contains(t))
+                        DrawMap(i, indentLevel + 1);
+                    }
+                }
+
+                if (!state.allHidden)
+                {
+                    Color32? forceColor = namespc == kBuiltInTypesIdentifier ? DefaultAliasColor : null;
+
+                    for (int i = 0; i < state.types.Length; ++i)
+                    {
+                        if (!state.hidden[i])
                         {
-                            DrawType(t, indentLevel, forceColor);
+                            DrawType(state.types[i], indentLevel, forceColor);
                         }
                     }
                 }
@@ -562,36 +606,30 @@ namespace JakePerry.Unity
             }
         }
 
-        private void UpdateFilterState(Map map, in ReadOnlyList<Substring> searchTerms)
+        private void UpdateFilterState(int index, in ReadOnlyList<Substring> searchTerms)
         {
-            // First pass is an optimization. If a namespace itself matches the search filter,
-            // then all types in the namespace must also match.
-            if (map == m_builtInMap || map == m_globalNamespaceMap)
+            string namespc = m_namespaceMap[index];
+            var state = m_stateArray[index];
+
+            if (string.IsNullOrEmpty(namespc) ||
+                StringComparer.Ordinal.Equals(namespc, kBuiltInTypesIdentifier) ||
+                !MatchSearchTerms(namespc, searchTerms))
             {
-                map.filterState = FilterState.Some;
+                bool any = false;
+                for (int i = 0; i < state.types.Length; ++i)
+                {
+                    var displayNames = GetDisplayNames(state.types[i]);
+                    bool match = MatchSearchTerms(displayNames.filter, searchTerms);
+                    any |= match;
+                    state.hidden[i] = !match;
+                }
+
+                state.allHidden = !any;
             }
             else
             {
-                map.filterState = MatchSearchTerms(map.@namespace.FullName, searchTerms)
-                    ? FilterState.None
-                    : FilterState.Some;
-            }
-
-            // Second pass checks per-type.
-            if (map.filterState != FilterState.None)
-            {
-                bool anyAvailable = false;
-                foreach (var t in map.types)
-                {
-                    var displayNames = GetDisplayNames(t);
-                    if (MatchSearchTerms(displayNames.filter, searchTerms))
-                    {
-                        anyAvailable = true;
-                        m_typesMatchingCurrentFilter.Add(t);
-                    }
-                }
-
-                map.filterState = anyAvailable ? FilterState.Some : FilterState.All;
+                state.hidden.SetAll(false);
+                state.allHidden = false;
             }
         }
 
@@ -599,101 +637,169 @@ namespace JakePerry.Unity
         {
             base.OnSearchFilterChanged();
 
-            m_typesMatchingCurrentFilter.Clear();
-
             var searchTerms = base.SearchTerms;
 
             // If there is no search filter, everything is available.
             if (searchTerms.Count == 0)
             {
-                m_builtInMap.filterState = FilterState.None;
-
-                foreach (var map in m_typeMap)
+                foreach (var state in m_stateArray)
                 {
-                    map.filterState = FilterState.None;
+                    state.hidden.SetAll(false);
+                    state.allHidden = false;
                 }
             }
             else
             {
-                UpdateFilterState(m_builtInMap, searchTerms);
-
-                foreach (var map in m_typeMap)
+                for (int i = 0; i < m_namespaceMap.Length; ++i)
                 {
-                    UpdateFilterState(map, searchTerms);
+                    UpdateFilterState(i, searchTerms);
                 }
             }
+        }
+
+        protected override void DrawHeaderGUI()
+        {
+            using (new EditorGUI.DisabledScope(disabled: !m_setupComplete))
+            {
+                // This draws the search bar
+                base.DrawHeaderGUI();
+            }
+
+            // TODO: Add extra buttons next to the search bar to filter by class, struct, etc.
+            // (when applicable of course, if generic constraint already enforces one, then lock it).
+            // Try using a EditorGUILayout.BeginHorizontal() call to avoid refactoring the search bar method
+            // and how it gets the control rect.
         }
 
         protected sealed override void DrawBodyGUI()
         {
+            if (!m_setupComplete)
+            {
+                using (new EditorGUI.DisabledScope(disabled: true))
+                {
+                    foreach (var hintLine in m_setupHintLines)
+                    {
+                        var hint = GetTempContent(hintLine);
+                        EditorGUILayout.LabelField(hint, EditorStyles.boldLabel);
+                    }
+                }
+                return;
+            }
+
             DrawType(null, 0);
 
-            DrawMap(m_builtInMap, 0);
-            DrawMap(m_globalNamespaceMap, 0);
+            int index = Array.BinarySearch(m_namespaceMap, kBuiltInTypesIdentifier, NamespaceComparer);
+            if (index > -1)
+            {
+                DrawMap(index, 0);
+            }
+
+            index = Array.BinarySearch(m_namespaceMap, string.Empty, NamespaceComparer);
+            if (index > -1)
+            {
+                DrawMap(index, 0);
+            }
         }
 
-        private void Setup(Type current)
+        private static bool IgnoreType(Type t)
+        {
+            if (t.IsDefined(typeof(CompilerGeneratedAttribute), false))
+                return true;
+
+            if (t.FullName.Contains("<PrivateImplementationDetails>", StringComparison.Ordinal))
+                return true;
+
+            return false;
+        }
+
+        private static void AddTypeToBuffer(
+            string namespc,
+            Type type,
+            int bufferSize,
+            List<string> namespaceMap,
+            List<LinkedList<FixedSizeBuffer<Type>>> buffers)
+        {
+            int index = namespaceMap.BinarySearch(namespc, NamespaceComparer);
+
+            LinkedList<FixedSizeBuffer<Type>> linkedList;
+            if (index > -1)
+            {
+                linkedList = buffers[index];
+            }
+            else
+            {
+                index = ~index;
+                namespaceMap.Insert(index, namespc);
+                buffers.Insert(index, linkedList = new());
+                linkedList.AddFirst(new FixedSizeBuffer<Type>(bufferSize));
+            }
+
+            if (!linkedList.Last.Value.Add(type))
+            {
+                linkedList.AddLast(new FixedSizeBuffer<Type>(bufferSize)).Value.Add(type);
+            }
+        }
+
+        private static void ScanAssembly(ScanWorkItem workItem)
         {
             const int kBufferSize = 16;
 
-            m_typeMap.Clear();
+            var assembly = workItem.Assembly;
 
-            var nsList = new List<string>(capacity: 512);
+            var nsMap = new List<string>(capacity: 256);
             var buffers = new List<LinkedList<FixedSizeBuffer<Type>>>(capacity: 512);
 
-            var nsComparer = StringComparer.Ordinal;
-
-            // TODO: Async this, put window in a loading state, show something in the gui instead of freeze.
-
-            // Note:
-            // Ideally this code would use Unity's TypeCache API here to take advantage of its
-            // performance benefits, however the API does not expose a complete collection of all
-            // types in the current AppDomain. As such, we must manually enumerate all types from
-            // all assemblies, and suffer the overhead.
-            // Forum post:
-            // https://forum.unity.com/threads/typecache-does-not-scan-all-assemblies-in-the-current-appdomain.1558037/#post-9698186
-            // Issue tracker:
-            // https://issuetracker.unity3d.com/issues/not-all-assemblies-are-found-in-the-current-appdomain-when-scanning-with-typecache
-            foreach (var type in AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()))
+            foreach (var type in assembly.GetTypes())
             {
-                if (IgnoreType(type)) continue;
-
-                // TODO: Type validation depending on restrictions
-
-                var ns = type.Namespace;
-                int index = nsList.BinarySearch(ns, nsComparer);
-
-                LinkedList<FixedSizeBuffer<Type>> linkedList;
-                if (index > -1)
+                if (!IgnoreType(type))
                 {
-                    linkedList = buffers[index];
-                }
-                else
-                {
-                    index = ~index;
-                    nsList.Insert(index, ns);
-                    buffers.Insert(index, linkedList = new());
-                    linkedList.AddFirst(new FixedSizeBuffer<Type>(kBufferSize));
-                }
-
-                if (!linkedList.Last.Value.Add(type))
-                {
-                    linkedList.AddLast(new FixedSizeBuffer<Type>(kBufferSize)).Value.Add(type);
+                    AddTypeToBuffer(type.Namespace, type, kBufferSize, nsMap, buffers);
                 }
             }
 
-            // Type.Namespace property returns null for types in the global namespace.
-            // The Namespace.GetNamespace method resolves null as 'None';
-            // An empty string corresponds to the global namespace.
-            // Switch null to an empty string here.
-            int globalIndex = nsList.IndexOf(null);
-            if (globalIndex > -1) nsList[globalIndex] = string.Empty;
+            // Type.Namespace returns null when the type is in the global namespace.
+            // It's easier to swap it out here than to deal with the null value in several other places.
+            int nullNamespaceIndex = nsMap.IndexOf(null);
+            if (nullNamespaceIndex > -1)
+            {
+                nsMap[nullNamespaceIndex] = string.Empty;
+            }
+
+            // Ensure intermediate namespaces are always included, even if
+            // they don't define any types.
+            for (int i = 0; i < nsMap.Count; ++i)
+            {
+                var namespc = nsMap[i];
+                while (!string.IsNullOrEmpty(namespc))
+                {
+                    namespc = NamespaceUtil.GetBaseNamespace(namespc);
+                    int baseNamespaceIndex = nsMap.BinarySearch(namespc, NamespaceComparer);
+                    if (baseNamespaceIndex < 0)
+                    {
+                        int index = ~baseNamespaceIndex;
+                        nsMap.Insert(index, namespc);
+                        buffers.Insert(index, null);
+
+                        if (index <= i) ++i;
+                    }
+                }
+            }
+
+            var typeCacheArray = new ReadOnlyArray<Type>[nsMap.Count];
+
+            var comparison = new Comparison<Type>(TypeSorter);
 
             // Consolidate linked lists into contiguous buffers
-            for (int i = 0; i < nsList.Count; ++i)
+            for (int i = 0; i < nsMap.Count; ++i)
             {
-                var ns = nsList[i];
+                var ns = nsMap[i];
                 var linkedList = buffers[i];
+
+                if (linkedList is null)
+                {
+                    typeCacheArray[i] = Array.Empty<Type>();
+                    continue;
+                }
 
                 var contiguousBuffer = new Type[kBufferSize * (linkedList.Count - 1) + linkedList.Last.Value.Count];
                 var n = linkedList.First;
@@ -706,61 +812,206 @@ namespace JakePerry.Unity
                 }
                 while (n is not null);
 
-                m_typeMap.Add(new Map(Namespace.GetNamespace(ns), contiguousBuffer));
+                typeCacheArray[i] = contiguousBuffer;
+
+                Array.Sort(contiguousBuffer, comparison);
             }
 
-            var comparison = new Comparison<Type>(TypeSorter);
-            foreach (var m in m_typeMap)
-            {
-                Array.Sort(m.types, comparison);
-            }
-            // TODO: Thread the above array sorting, it's a bottleneck.
-            // Can I sort these using job system? No reference types (cant pass Type).
-            // Can perhaps capture name (char*) and original index in a struct,
-            // perform sort in Job, then match results in c#. This will need some serious testing
-            // to make sure its actually worth the code bloat and gives significant speed bonus.
+            workItem.SetResult(nsMap.ToArray(), typeCacheArray);
+        }
 
-            // Ensure intermediate namespaces are always included, even if
-            // they don't define any types.
-            for (int i = 0; i < nsList.Count; ++i)
+        private static void ConsolidateTypesFromScannedAssembly(string[] namespaces, ReadOnlyArray<Type>[] typesInNamespaces, DistinctList<List<Type>> toSort)
+        {
+            var namespaceMap = _appDomainNamespaces;
+            var typesMap = _typesInNamespace;
+
+            for (int i = 0; i < namespaces.Length; ++i)
             {
-                var ns = Namespace.GetNamespace(nsList[i]);
-                while (!ns.IsRoot)
+                var namespc = namespaces[i];
+                var typesInNamespace = typesInNamespaces[i];
+
+                var index = namespaceMap.BinarySearch(namespc, NamespaceComparer);
+                List<Type> types;
+                if (index < 0)
                 {
-                    ns = ns.BaseNamespace;
-                    int baseNamespaceIndex = nsList.BinarySearch(ns.FullName);
-                    if (baseNamespaceIndex < 0)
-                    {
-                        int index = ~baseNamespaceIndex;
-                        nsList.Insert(index, ns.FullName);
-                        m_typeMap.Insert(index, new Map(ns, Array.Empty<Type>()));
+                    types = new List<Type>(capacity: typesInNamespace.Length);
 
-                        if (index <= i) ++i;
+                    index = ~index;
+                    namespaceMap.Insert(index, namespc);
+                    typesMap.Insert(index, types);
+                }
+                else
+                {
+                    types = typesMap[index];
+                    toSort.Add(types);
+                }
+
+                types.AddRange(typesInNamespace.AsEnumerable());
+            }
+        }
+
+        private static async Task ProcessMissingAssemblies(List<string> hintLines, TimeYielder yielder, CancellationToken token)
+        {
+            HashSet<Assembly> scanned;
+            lock (_scanLock) { scanned = new HashSet<Assembly>(_scannedAssemblies); }
+
+            var scanTasks = new List<Task>();
+            var scanItems = new List<ScanWorkItem>();
+
+            /* Note:
+             * Ideally this code would use Unity's TypeCache API here to take advantage of its
+             * performance benefits, however the API does not expose a complete collection of all
+             * types in the current AppDomain. As such, we must manually enumerate all types from
+             * all assemblies, and suffer the overhead.
+             * Forum post:
+             * https://forum.unity.com/threads/typecache-does-not-scan-all-assemblies-in-the-current-appdomain.1558037/#post-9698186
+             * Issue tracker:
+             * https://issuetracker.unity3d.com/issues/not-all-assemblies-are-found-in-the-current-appdomain-when-scanning-with-typecache
+             */
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (!scanned.Contains(assembly))
+                {
+                    var workItem = new ScanWorkItem(assembly);
+                    var scanTask = Task.Run(() => ScanAssembly(workItem));
+
+                    scanItems.Add(workItem);
+                    scanTasks.Add(scanTask);
+                }
+            }
+
+            int scanCount = scanTasks.Count;
+            if (scanCount == 0) return;
+
+            // Wait for scan tasks to complete
+            while (true)
+            {
+                hintLines.Clear();
+
+                int c = 0;
+                for (int i = 0; i < scanItems.Count; ++i)
+                {
+                    char scanStatusSymbol = kCheckMark;
+                    if (!scanTasks[i].IsCompleted)
+                    {
+                        ++c;
+                        scanStatusSymbol = '-';
+                    }
+
+                    hintLines.Add($"{scanStatusSymbol} {scanItems[i].Assembly.GetName().Name}");
+                }
+
+                hintLines.Insert(0, $"Scanning assemblies ({scanCount - c}/{scanCount})");
+
+                if (c == 0) break;
+                await Task.Yield();
+            }
+
+            // All tasks are complete at this point so this will not lock the thread.
+            // This call is necessary to correctly propagate exceptions and prevent
+            // them going unobserved, etc.
+            Task.WaitAll(scanTasks.ToArray());
+
+            if (token.IsCancellationRequested) return;
+
+            var toBeSorted = new DistinctList<List<Type>>(capacity: 512);
+            for (int i = 0; i < scanItems.Count; ++i)
+            {
+                var workItem = scanItems[i];
+                lock (_scanLock)
+                {
+                    if (_scannedAssemblies.Add(workItem.Assembly))
+                    {
+                        var (namespaces, typesInNamespaces) = workItem.Result;
+                        ConsolidateTypesFromScannedAssembly(namespaces, typesInNamespaces, toBeSorted);
+                    }
+                }
+
+                if (yielder.WantsToYield)
+                {
+                    hintLines.Clear();
+                    hintLines.Add($"Processing assembly data ({i + 1}/{scanItems.Count})");
+
+                    await yielder.Yield();
+
+                    if (token.IsCancellationRequested)
+                    {
+                        // Though not ideal, we must ensure the type lists in the global cache
+                        // are always sorted before we exit. As such, we can't return here.
+                        break;
                     }
                 }
             }
 
-            globalIndex = nsList.IndexOf(string.Empty);
-            Debug.Assert(globalIndex > -1, "Global Namespace not present.");
-
-            m_globalNamespaceMap = m_typeMap[globalIndex];
-
-            var bTypes = new List<Type>(_builtInTypes.Length);
-            foreach (var tuple in _builtInTypes)
+            if (toBeSorted.Count > 0)
             {
-                // TODO: Validate built in types
-
-                bTypes.Add(tuple.Item1);
+                var comp = new Comparison<Type>(TypeSorter);
+                foreach (var list in toBeSorted)
+                {
+                    list.Sort(comp);
+                }
             }
-            m_builtInMap = new Map(Namespace.None, bTypes.ToArray());
+        }
+
+        private async void SetupAsync(Type current)
+        {
+            var yielder = new TimeYielder(TimeSpan.FromMilliseconds(10).Ticks);
+            var token = (m_cancelSource = new()).Token;
+
+            await ProcessMissingAssemblies(m_setupHintLines, yielder, token);
+
+            m_setupHintLines.Clear();
+            m_setupHintLines.Add("Consolidating type map");
+
+            await yielder.YieldOptional();
+            if (token.IsCancellationRequested) return;
+
+            lock (_scanLock)
+            {
+                int namespaceCount = _appDomainNamespaces.Count;
+                var nsList = new List<string>(capacity: namespaceCount);
+                var states = new List<State>(capacity: namespaceCount);
+
+                for (int i = 0; i < namespaceCount; ++i)
+                {
+                    string namespc = _appDomainNamespaces[i];
+                    var typesInNamespace = _typesInNamespace[i];
+
+                    // TODO: Validate types, only grab those that match restriction.
+                    var state = new State(typesInNamespace.ToArray());
+
+                    nsList.Add(namespc);
+                    states.Add(state);
+                }
+
+                var builtinTypes = new List<Type>(capacity: _builtInTypes.Length);
+                foreach (var tuple in _builtInTypes)
+                {
+                    // TODO: Validate types, only grab those that match restriction.
+                    builtinTypes.Add(tuple.Item1);
+                }
+
+                if (builtinTypes.Count > 0)
+                {
+                    var builtinIndex = ~nsList.BinarySearch(kBuiltInTypesIdentifier, NamespaceComparer);
+                    nsList.Insert(builtinIndex, kBuiltInTypesIdentifier);
+                    states.Insert(builtinIndex, new State(builtinTypes.ToArray()));
+                }
+
+                m_namespaceMap = nsList.ToArray();
+                m_stateArray = states.ToArray();
+            }
 
             m_currentSelection = current;
+
+            m_setupComplete = true;
+            m_setupHintLines.Clear();
         }
 
         public static void OpenTypeSelector(int controlId, Type current)
         {
             var window = ShowWindow<TypeSelector>(controlId);
-            window.Setup(current);
+            window.SetupAsync(current);
 
             // TODO: Should this auto focus and expand to show the current selection
         }
