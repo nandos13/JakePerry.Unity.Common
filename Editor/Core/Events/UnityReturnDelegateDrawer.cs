@@ -179,6 +179,12 @@ namespace JakePerry.Unity.Events
             menu.AddItem(new GUIContent(name), on, _assignMethodCallback, args);
         }
 
+        private static bool IsGameObjectOrComponentReference(SerializedProperty target)
+        {
+            var o = target.objectReferenceValue;
+            return o != null && (o is GameObject || o is Component);
+        }
+
         private void DrawHeader(Rect rect, GUIContent label)
         {
             // TODO: Consider supporting argument coloring for header signature
@@ -364,6 +370,41 @@ namespace JakePerry.Unity.Events
             return EditorGUIEx.CustomGuiButton(rect, id, EditorGUIEx.Styles.GetStyle("m_IconButton"), iconContent);
         }
 
+        private void TargetComponentDropdown(Rect rect, UnityEngine.Object objRef, SerializedProperty targetProp)
+        {
+            var gameObj = objRef is GameObject go ? go : (objRef as Component).gameObject;
+
+            var dropdownMenu = new GenericMenu();
+            var callback = new GenericMenu.MenuFunction2(o =>
+            {
+                targetProp.objectReferenceValue = (UnityEngine.Object)o;
+                targetProp.serializedObject.ApplyModifiedProperties();
+            });
+
+            dropdownMenu.AddDisabledItem(new GUIContent(objRef.name));
+            dropdownMenu.AddSeparator(string.Empty);
+
+            dropdownMenu.AddItem(new GUIContent("GameObject"), gameObj == objRef, callback, gameObj);
+
+            var countLookup = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            foreach (var c in gameObj.GetComponents(typeof(Component)))
+            {
+                var name = c.GetType().Name;
+                if (countLookup.TryGetValue(name, out int count))
+                {
+                    name = $"{name} ({count})";
+                }
+
+                countLookup[name] = count + 1;
+
+                var capture = c;
+                dropdownMenu.AddItem(new GUIContent(name), c == objRef, callback, capture);
+            }
+
+            dropdownMenu.DropDown(rect);
+        }
+
         private void DrawTarget(ref Rect rect)
         {
             var property = _context.properties.property;
@@ -379,9 +420,16 @@ namespace JakePerry.Unity.Events
             var typeIconRect = targetRect.WithSize(LineHeight, LineHeight);
             targetRect = targetRect.PadLeft(typeIconRect.width + Spacing);
 
-            targetRect.height = @static
-                ? SerializeTypeDefinitionDrawer.GetPropertyHeight(staticTargetProp, false)
-                : LineHeight;
+            if (@static)
+            {
+                targetRect.height = SerializeTypeDefinitionDrawer.GetPropertyHeight(staticTargetProp, false);
+            }
+            else
+            {
+                targetRect.height = IsGameObjectOrComponentReference(targetProp)
+                    ? LineHeight + LineHeight + Spacing
+                    : LineHeight;
+            }
 
             rect = rect.PadTop(targetRect.height);
 
@@ -406,7 +454,20 @@ namespace JakePerry.Unity.Events
             }
             else
             {
+                targetRect.height = LineHeight;
+
                 EditorGUI.PropertyField(targetRect, targetProp, GUIContent.none);
+
+                if (IsGameObjectOrComponentReference(targetProp))
+                {
+                    var componentRect = targetRect.OffsetY(LineHeight + Spacing);
+                    var objRef = targetProp.objectReferenceValue;
+
+                    if (EditorGUI.DropdownButton(componentRect, GetTempContent(objRef.GetType().Name), FocusType.Keyboard))
+                    {
+                        TargetComponentDropdown(componentRect, objRef, targetProp);
+                    }
+                }
             }
         }
 
@@ -758,9 +819,17 @@ namespace JakePerry.Unity.Events
             }
             else
             {
-                float targetHeight = properties.targetingStaticMember.boolValue
-                    ? SerializeTypeDefinitionDrawer.GetPropertyHeight(properties.staticTargetType, false)
-                    : LineHeight;
+                float targetHeight;
+                if (properties.targetingStaticMember.boolValue)
+                {
+                    targetHeight = SerializeTypeDefinitionDrawer.GetPropertyHeight(properties.staticTargetType, false);
+                }
+                else
+                {
+                    targetHeight = IsGameObjectOrComponentReference(properties.target)
+                        ? LineHeight + LineHeight + Spacing
+                        : LineHeight;
+                }
 
                 var methodAndArgsHeight = LineHeight;
                 if (!properties.argumentsDefinedByEvent.boolValue)
