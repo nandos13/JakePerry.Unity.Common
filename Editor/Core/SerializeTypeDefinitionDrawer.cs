@@ -28,7 +28,7 @@ namespace JakePerry.Unity
             public Rect position;
             public SerializedProperty property;
             public Type type;
-            public Type genericArgument;
+            public Type genericParameter;
             public int index;
 
             public SerializedProperty typeName;
@@ -243,7 +243,7 @@ namespace JakePerry.Unity
             Rect position,
             SerializedProperty property,
             ref int index,
-            Type genericArgument = null)
+            Type genericParameter = null)
         {
             var typeName = property.FindPropertyRelative("m_typeName");
             var wantsUnbound = property.FindPropertyRelative("m_wantsUnboundGeneric");
@@ -292,7 +292,7 @@ namespace JakePerry.Unity
                         position: argContentRect,
                         property: arg,
                         index: ref index,
-                        genericArgument: argType);
+                        genericParameter: argType);
 
                     argProperties.position = argRect;
 
@@ -307,7 +307,7 @@ namespace JakePerry.Unity
                 position = position,
                 property = property,
                 type = t,
-                genericArgument = genericArgument,
+                genericParameter = genericParameter,
                 index = thisIndex,
                 typeName = typeName,
                 wantsUnbound = wantsUnbound,
@@ -370,7 +370,7 @@ namespace JakePerry.Unity
             }
         }
 
-        private static void DrawTypeSelectRect(Rect position, SerializedProperty property, GUIContent content, Type t)
+        private static void DrawTypeSelectRect(Rect position, SerializedProperty property, GUIContent content, Type t, Type genericParameter)
         {
             const string kHint = "SerializeTypeDefinitionDrawer.TypeSelectorButton";
 
@@ -389,7 +389,7 @@ namespace JakePerry.Unity
 
             if (EditorGUIEx.ObjectFieldButton(position, content, id))
             {
-                TypeSelector.OpenTypeSelector(id, t);
+                TypeSelector.OpenTypeSelector(id, t, genericParameter);
             }
         }
 
@@ -487,7 +487,7 @@ namespace JakePerry.Unity
                         // TODO: Color with argument text
                         EditorGUI.DrawRect(argLineRect, Color.white);
 
-                        var argName = argProperties.genericArgument.Name;
+                        var argName = argProperties.genericParameter.Name;
                         var c = GetTempContent(argName, argName);
 
                         GenericArgumentNameStyle.Draw(nameRect, c, hover, false, false, false);
@@ -511,7 +511,7 @@ namespace JakePerry.Unity
                 typeText = properties.type.FullName;
             }
 
-            DrawTypeSelectRect(typeRect, properties.property, GetTempContent(typeText), properties.type);
+            DrawTypeSelectRect(typeRect, properties.property, GetTempContent(typeText), properties.type, properties.genericParameter);
         }
 
         private static NameSegmentData GetNameSegment(ref Rect rect, GUIStyle style, string text, int index)
@@ -547,7 +547,7 @@ namespace JakePerry.Unity
             }
             else
             {
-                text = index == 0 ? "Null" : properties.genericArgument.Name;
+                text = index == 0 ? "Null" : properties.genericParameter.Name;
             }
 
             output.Add(GetNameSegment(ref rect, style, text, thisIndex));

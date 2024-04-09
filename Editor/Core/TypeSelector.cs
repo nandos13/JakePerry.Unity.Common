@@ -665,6 +665,8 @@ namespace JakePerry.Unity
                 base.DrawHeaderGUI();
             }
 
+            // TODO: Text hinting at current generic constraints
+
             // TODO: Add extra buttons next to the search bar to filter by class, struct, etc.
             // (when applicable of course, if generic constraint already enforces one, then lock it).
             // Try using a EditorGUILayout.BeginHorizontal() call to avoid refactoring the search bar method
@@ -953,8 +955,49 @@ namespace JakePerry.Unity
             }
         }
 
-        private async void SetupAsync(Type current)
+        // TODO: Move up top
+        private sealed class GenericConstraintCheck
         {
+            private readonly Type m_genericParameter;
+
+            public GenericConstraintCheck(Type genericParameter) { m_genericParameter = genericParameter; }
+
+            public bool Incompatible(Type t)
+            {
+                // TODO: Implementation...
+                // Consider type:
+                // Class<T, U>
+                //  where T : IEquatable<IComparer<U>>
+                //  where U : T
+                //
+                // Both restrict each other, and we can't validate one at a time.
+                // If constraints are only one way (ie the T constraint was removed),
+                // we can disable editing the U parameter until T is fully qualified.
+                // In cases where its bi-directional, just allow one to be assigned
+                // and sort shit out after that?
+                // Perhaps a check in the type drawer that checks if a generic type is
+                // correctly defined?
+
+                // The following two members will be useful...
+                //t.GetGenericParameterConstraints;
+                //t.GenericParameterAttributes;
+
+
+
+                // TODO: Remove this later. This approach only works for generics
+                // with one parameter... Gonna need something a lot more complex :) :) :)
+                try { m_genericParameter.DeclaringType.MakeGenericType(t); }
+                catch { return true; }
+                return false;
+            }
+        }
+
+        private async void SetupAsync(Type current, Type genericParameter)
+        {
+            // TODO: Temporary measure to ignore generic constraints. Need a lot more thought
+            // into how to properly handle this feature.
+            genericParameter = null;
+
             var yielder = new TimeYielder(TimeSpan.FromMilliseconds(10).Ticks);
             var token = (m_cancelSource = new()).Token;
 
@@ -966,6 +1009,16 @@ namespace JakePerry.Unity
             await yielder.YieldOptional();
             if (token.IsCancellationRequested) return;
 
+            // Prepare to check compatibility with generic parameter
+            Predicate<Type> constraintRemovePredicate = null;
+            List<Type> tempCompatibleTypesList = null;
+            bool checkConstraints = genericParameter is not null;
+            if (checkConstraints)
+            {
+                constraintRemovePredicate = new Predicate<Type>(new GenericConstraintCheck(genericParameter).Incompatible);
+                tempCompatibleTypesList = new List<Type>();
+            }
+
             lock (_scanLock)
             {
                 int namespaceCount = _appDomainNamespaces.Count;
@@ -975,10 +1028,22 @@ namespace JakePerry.Unity
                 for (int i = 0; i < namespaceCount; ++i)
                 {
                     string namespc = _appDomainNamespaces[i];
-                    var typesInNamespace = _typesInNamespace[i];
 
-                    // TODO: Validate types, only grab those that match restriction.
-                    var state = new State(typesInNamespace.ToArray());
+                    Type[] typesInNamespace;
+                    if (checkConstraints)
+                    {
+                        tempCompatibleTypesList.Clear();
+                        tempCompatibleTypesList.AddRange(_typesInNamespace[i]);
+                        tempCompatibleTypesList.RemoveAll(constraintRemovePredicate);
+
+                        typesInNamespace = tempCompatibleTypesList.ToArray();
+                    }
+                    else
+                    {
+                        typesInNamespace = _typesInNamespace[i].ToArray();
+                    }
+
+                    var state = new State(typesInNamespace);
 
                     nsList.Add(namespc);
                     states.Add(state);
@@ -1008,10 +1073,35 @@ namespace JakePerry.Unity
             m_setupHintLines.Clear();
         }
 
-        public static void OpenTypeSelector(int controlId, Type current)
+        /// <summary>
+        /// Open the type selector window.
+        /// </summary>
+        /// <param name="controlId">
+        /// ID of the control which owns the popup. This can be obtained via the
+        /// 'GUIUtility.GetControlID' method.
+        /// </param>
+        /// <param name="current">
+        /// The current value.
+        /// </param>
+        /// <param name="genericParameter">
+        /// [Optional] The generic parameter which is to be assigned to. If assigned, the value
+        /// is used to restrict the types available for selection to those which are compatible
+        /// with the generic constraints declared for the parameter.
+        /// <para/>
+        /// See: <see cref="Type.IsGenericParameter"/>.
+        /// </param>
+        /// <exception cref="ArgumentException"/>
+        public static void OpenTypeSelector(int controlId, Type current, Type genericParameter = null)
         {
+            if (genericParameter is not null && !genericParameter.IsGenericParameter)
+            {
+                throw new ArgumentException(
+                    "Expected a Type object that represents a generic parameter.",
+                    nameof(genericParameter));
+            }
+
             var window = ShowWindow<TypeSelector>(controlId);
-            window.SetupAsync(current);
+            window.SetupAsync(current, genericParameter);
 
             // TODO: Should this auto focus and expand to show the current selection
         }
