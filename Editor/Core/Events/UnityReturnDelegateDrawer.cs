@@ -30,13 +30,6 @@ namespace JakePerry.Unity.Events
             public bool viewingAdvancedSettings;
         }
 
-        private sealed class AssignMethodArguments
-        {
-            public SerializedProperty property;
-            public MemberInfo member;
-            public bool dynamicArguments;
-        }
-
         private sealed class PropertyCache
         {
             public readonly SerializedProperty property;
@@ -45,6 +38,7 @@ namespace JakePerry.Unity.Events
             public readonly SerializedProperty staticTargetType;
             public readonly SerializedProperty targetingStaticMember;
             public readonly SerializedProperty methodName;
+            public readonly SerializedProperty arguments;
             public readonly SerializedProperty argumentsDefinedByEvent;
             public readonly SerializedProperty policy;
             public readonly SerializedProperty editorBehaviour;
@@ -58,12 +52,20 @@ namespace JakePerry.Unity.Events
                 staticTargetType = property.FindPropertyRelative("m_staticTargetType");
                 targetingStaticMember = property.FindPropertyRelative("m_targetingStaticMember");
                 methodName = property.FindPropertyRelative("m_methodName");
+                arguments = property.FindPropertyRelative("m_arguments");
                 argumentsDefinedByEvent = property.FindPropertyRelative("m_argumentsDefinedByEvent");
 
                 policy = property.FindPropertyRelative("m_policy");
                 editorBehaviour = property.FindPropertyRelative("m_editorBehaviour");
                 editorMockValue = property.FindPropertyRelative("m_editorMockValue");
             }
+        }
+
+        private sealed class AssignMethodArguments
+        {
+            public PropertyCache properties;
+            public MemberInfo member;
+            public bool dynamicArguments;
         }
 
         private readonly struct Context
@@ -87,10 +89,8 @@ namespace JakePerry.Unity.Events
         private static readonly Dictionary<string, PropertyCache> _propertyCache = new();
         private static readonly Dictionary<string, ValueMemberInfo> _memberCache = new();
         private static readonly Dictionary<string, State> _stateCache = new();
-        private static readonly List<AssignMethodArguments> _assignArgsCache = new(capacity: 64);
 
         private static Context _context;
-        private static int _assignOptionIndex;
 
         [DidReloadScripts]
         [InitializeOnLoadMethod]
@@ -99,7 +99,6 @@ namespace JakePerry.Unity.Events
             _propertyCache.Clear();
             _memberCache.Clear();
             _stateCache.Clear();
-            _assignArgsCache.Clear();
         }
 
         private static ValueMemberInfo GetMember(SerializedProperty property)
@@ -153,28 +152,32 @@ namespace JakePerry.Unity.Events
         {
             var args = (AssignMethodArguments)e;
 
-            // TODO: Assign, validate arguments, etc.
-            // member could be a method or property.
+            args.properties.methodName.stringValue = args.member?.Name ?? string.Empty;
+            args.properties.argumentsDefinedByEvent.boolValue = args.dynamicArguments;
+
+            // TODO: Handle argument types properly.
+            if (args.dynamicArguments)
+            {
+                args.properties.arguments.ClearArray();
+            }
+
+            args.properties.property.serializedObject.ApplyModifiedProperties();
         }
 
         private static void AddMemberSelectOption(
             GenericMenu menu,
             string name,
             bool on,
-            ref int index,
-            SerializedProperty property,
+            PropertyCache properties,
             MemberInfo member,
             bool dynamicArguments)
         {
-            var args = index >= _assignArgsCache.Count
-                ? new AssignMethodArguments()
-                : _assignArgsCache[index];
-
-            ++index;
-
-            args.property = property;
-            args.member = member;
-            args.dynamicArguments = dynamicArguments;
+            var args = new AssignMethodArguments()
+            {
+                properties = properties,
+                member = member,
+                dynamicArguments = dynamicArguments
+            };
 
             menu.AddItem(new GUIContent(name), on, _assignMethodCallback, args);
         }
@@ -471,19 +474,20 @@ namespace JakePerry.Unity.Events
             }
         }
 
-        private static List<MemberInfo> GetMembersWithReturnType(Type declaringType, Type returnType)
+        private static List<MemberInfo> GetMembersWithReturnType(Type declaringType, Type returnType, BindingFlags bindingAttr)
         {
             var list = new List<MemberInfo>();
 
-            foreach (var m in declaringType.GetMethods())
+            foreach (var m in declaringType.GetMethods(bindingAttr))
                 if (!m.IsSpecialName &&
                     returnType.IsAssignableFrom(m.ReturnType))
                 {
                     list.Add(m);
                 }
 
-            foreach (var p in declaringType.GetProperties())
+            foreach (var p in declaringType.GetProperties(bindingAttr))
             {
+                // TODO: Settings option to show or hide Obsolete methods. Prefix with [Obsolete]
                 var m = p.GetGetMethod();
                 if (m != null &&
                     returnType.IsAssignableFrom(m.ReturnType) &&
@@ -507,10 +511,10 @@ namespace JakePerry.Unity.Events
             return GetNiceMethodString(member as MethodInfo, includeReturnType);
         }
 
-        private GenericMenu BuildStaticMemberPopupList(Type declaringType, MethodInfo currentMethod)
+        private GenericMenu BuildMemberPopupList(Type declaringType, MethodInfo currentMethod, bool @static)
         {
             var metadata = _context.metadata;
-            var property = _context.properties.property;
+            var properties = _context.properties;
             var definedByEvent = _context.properties.argumentsDefinedByEvent.boolValue;
 
             // TODO: Idea, Invocation Argument base class is used for all the
@@ -522,18 +526,15 @@ namespace JakePerry.Unity.Events
 
             var menu = new GenericMenu();
 
-            AddMemberSelectOption(menu, "None", currentMethod is null, ref _assignOptionIndex, property, null, true);
+            AddMemberSelectOption(menu, "None", currentMethod is null, properties, null, true);
 
-            var list = GetMembersWithReturnType(declaringType, metadata.returnType);
+            // TODO: Make a decision as to whether or not private members can/should be supported for non-static targets.
 
-            list.RemoveAll(m =>
-            {
-                bool isStatic = (m is PropertyInfo p)
-                    ? p.GetGetMethod().IsStatic
-                    : (m as MethodInfo).IsStatic;
+            // Get all invocable methods (including property 'get' methods)
+            var bindingAttr = (@static ? BindingFlags.Static : BindingFlags.Instance) | BindingFlags.Public;
+            var list = GetMembersWithReturnType(declaringType, metadata.returnType, bindingAttr);
 
-                return !isStatic;
-            });
+            // Sort the list
             list.Sort(CompareMemberDisplayOrder);
 
             var dynamicParams = metadata.eventDefinedArgs;
@@ -581,7 +582,7 @@ namespace JakePerry.Unity.Events
                 foreach (var m in list2)
                 {
                     bool on = currentMethod == m && definedByEvent;
-                    AddMemberSelectOption(menu, GetNiceMemberString(m, false), on, ref _assignOptionIndex, property, m, true);
+                    AddMemberSelectOption(menu, GetNiceMemberString(m, false), on, properties, m, true);
                 }
             }
 
@@ -602,6 +603,8 @@ namespace JakePerry.Unity.Events
 
             if (list2.Count > 0)
             {
+                // Only display return types of the methods if one or more methods return a type that
+                // is not exactly equal to the expected type (ie. a subclass or interface implementation).
                 bool includeReturnType = anyReturnsSubclass;
 
                 menu.AddSeparator(string.Empty);
@@ -611,7 +614,7 @@ namespace JakePerry.Unity.Events
                 foreach (var m in list2)
                 {
                     bool on = currentMethod == m && !definedByEvent;
-                    AddMemberSelectOption(menu, GetNiceMemberString(m, includeReturnType), on, ref _assignOptionIndex, property, m, false);
+                    AddMemberSelectOption(menu, GetNiceMemberString(m, includeReturnType), on, properties, m, false);
                 }
             }
 
@@ -775,16 +778,19 @@ namespace JakePerry.Unity.Events
             {
                 if (EditorGUI.DropdownButton(rect, c, FocusType.Passive, EditorStyles.popup))
                 {
+                    Type declaringType;
                     if (@static)
                     {
                         Debug.Assert(invocationTarget is Type);
-                        BuildStaticMemberPopupList((Type)invocationTarget, currentMethod).DropDown(rect);
+                        declaringType = (Type)invocationTarget;
                     }
                     else
                     {
                         Debug.Assert(invocationTarget is UnityEngine.Object);
-                        BuildInstanceMemberPopupList((UnityEngine.Object)invocationTarget);
+                        declaringType = invocationTarget.GetType();
                     }
+
+                    BuildMemberPopupList(declaringType, currentMethod, @static).DropDown(rect);
                 }
             }
 
@@ -851,8 +857,6 @@ namespace JakePerry.Unity.Events
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
-            _assignOptionIndex = 0;
-
             var serializedMember = GetMember(property);
 
             try

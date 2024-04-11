@@ -113,7 +113,7 @@ namespace JakePerry.Unity.Events
                     int num = 0;
                     foreach (var param in parameters)
                     {
-                        if (argTypes[num].IsPrimitive != param.ParameterType.IsPrimitive)
+                        if (argTypes[num++].IsPrimitive != param.ParameterType.IsPrimitive)
                         {
                             goto AFTER_CHECK_METHOD;
                         }
@@ -132,7 +132,7 @@ namespace JakePerry.Unity.Events
                      *   The current method is either hiding the base method (via the 'new' keyword), or both the current
                      *   and target method are private.
                      */
-                    if (returnType.IsAssignableFrom(method.ReturnType))
+                    if (!returnType.IsAssignableFrom(method.ReturnType))
                     {
                         matchWithIncorrectReturn = method;
                         goto AFTER_CHECK_METHOD;
