@@ -22,6 +22,40 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
+    internal abstract class ParameterTypedArgument : InvocationArgument
+    {
+        // TODO: This needs to be validated via the 'tidy' method when the value is set in inspector.
+        [SerializeField]
+        private string m_parameterTypeName;
+
+        private Type m_resolvedType;
+
+        internal sealed override Type ArgumentType
+        {
+            get
+            {
+                if (m_resolvedType is null)
+                {
+                    var n = m_parameterTypeName;
+                    if (!string.IsNullOrEmpty(n))
+                    {
+                        var type2 = Type.GetType(n, throwOnError: false);
+                        if (type2 is not null)
+                        {
+                            m_resolvedType = type2;
+                            return type2;
+                        }
+                    }
+
+                    m_resolvedType = typeof(UnityEngine.Object);
+                }
+
+                return m_resolvedType;
+            }
+        }
+    }
+
+    [Serializable]
     internal sealed class IntArgument : StructArgument<int>
     {
         [SerializeField]
@@ -40,6 +74,15 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
+    internal sealed class BoolArgument : StructArgument<bool>
+    {
+        [SerializeField]
+        private bool m_value;
+
+        internal override object ArgumentValue => (object)m_value;
+    }
+
+    [Serializable]
     internal sealed class StringArgument : InvocationArgument
     {
         [SerializeField]
@@ -50,50 +93,36 @@ namespace JakePerry.Unity.Events
     }
 
     [Serializable]
-    internal sealed class BoolArgument : StructArgument<bool>
+    internal sealed class ObjectArgument : ParameterTypedArgument
     {
         [SerializeField]
-        private bool m_value;
+        private UnityEngine.Object m_value;
 
         internal override object ArgumentValue => (object)m_value;
     }
 
     [Serializable]
-    internal sealed class ObjectArgument : InvocationArgument
+    internal sealed class ExtendedInvocationArgument : ParameterTypedArgument
     {
-        [SerializeField]
-        private UnityEngine.Object m_value;
+        [SerializeReference]
+        private SerializableMethodArgument m_arg;
 
-        // TODO: This needs to be validated via the 'tidy' method when the value is set in inspector.
-        [SerializeField]
-        private string m_assemblyTypeName;
-
-        private Type m_resolvedType;
-
-        internal override Type ArgumentType
+        internal override object ArgumentValue
         {
             get
             {
-                if (m_resolvedType is null)
+                var arg = m_arg;
+                if (arg is not null)
                 {
-                    var assemblyTypeName = m_assemblyTypeName;
-                    if (!string.IsNullOrEmpty(assemblyTypeName))
+                    var field = SerializableMethodArgument.GetArgumentValueField(arg.GetType());
+                    if (field is not null)
                     {
-                        var type2 = Type.GetType(assemblyTypeName, throwOnError: false);
-                        if (type2 is not null)
-                        {
-                            m_resolvedType = type2;
-                            return type2;
-                        }
+                        return field.GetValue(arg);
                     }
-
-                    m_resolvedType = typeof(UnityEngine.Object);
                 }
 
-                return m_resolvedType;
+                return null;
             }
         }
-
-        internal override object ArgumentValue => (object)m_value;
     }
 }

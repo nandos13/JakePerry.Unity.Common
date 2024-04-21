@@ -482,19 +482,24 @@ namespace JakePerry.Unity.Events
                 if (!m.IsSpecialName &&
                     returnType.IsAssignableFrom(m.ReturnType))
                 {
-                    list.Add(m);
+                    // TODO: Handle obsolete, same as below
+                    if (m.GetCustomAttribute<ObsoleteAttribute>() == null)
+                    {
+                        list.Add(m);
+                    }
                 }
 
             foreach (var p in declaringType.GetProperties(bindingAttr))
             {
-                // TODO: Settings option to show or hide Obsolete methods. Prefix with [Obsolete]
                 var m = p.GetGetMethod();
-                if (m != null &&
-                    returnType.IsAssignableFrom(m.ReturnType) &&
-                    p.GetCustomAttribute<ObsoleteAttribute>() == null &&
-                    m.GetCustomAttribute<ObsoleteAttribute>() == null)
+                if (m != null && returnType.IsAssignableFrom(m.ReturnType))
                 {
-                    list.Add(p);
+                    // TODO: Settings option to show or hide Obsolete methods. Prefix with [Obsolete]
+                    if (p.GetCustomAttribute<ObsoleteAttribute>() == null &&
+                        m.GetCustomAttribute<ObsoleteAttribute>() == null)
+                    {
+                        list.Add(p);
+                    }
                 }
             }
 
@@ -517,18 +522,13 @@ namespace JakePerry.Unity.Events
             var properties = _context.properties;
             var definedByEvent = _context.properties.argumentsDefinedByEvent.boolValue;
 
-            // TODO: Idea, Invocation Argument base class is used for all the
-            // serializable arguments. If there was a system that could bind
-            // these types, the system could be extended to support methods
-            // that have more parameter types than just the unity-supported ones!
-            // Or... All reference types are supported out of the box.
-            // Structs can be bound by user as required...
-
             var menu = new GenericMenu();
 
             AddMemberSelectOption(menu, "None", currentMethod is null, properties, null, true);
 
             // TODO: Make a decision as to whether or not private members can/should be supported for non-static targets.
+            // Probably yes. When supported, would be nice to show the access modifier in the dropdown, which will
+            // require something other than GenericMenu :(
 
             // Get all invocable methods (including property 'get' methods)
             var bindingAttr = (@static ? BindingFlags.Static : BindingFlags.Instance) | BindingFlags.Public;
@@ -591,14 +591,27 @@ namespace JakePerry.Unity.Events
             bool anyReturnsSubclass = false;
             foreach (var m in list)
             {
-                // TODO: Match static args. Just anything thats actually serializable as InvocationArgument.
-
                 if (!anyReturnsSubclass)
                 {
                     anyReturnsSubclass = ((m is PropertyInfo p) ? p.PropertyType : (m as MethodInfo).ReturnType) != metadata.returnType;
                 }
 
+                // TODO: Instead of filtering these here, maybe allow them to be selected
+                // but draw the argument as a single-line warning, directing the user about
+                // how to add support for serializing the argument.
+                if (m is MethodInfo method)
+                    foreach (var param in method.GetParameters())
+                    {
+                        if (!IsMemberParameterSerializable(param.ParameterType))
+                        {
+                            goto SKIP_MEMBER;
+                        }
+                    }
+
                 list2.Add(m);
+            
+            SKIP_MEMBER:
+                continue;
             }
 
             if (list2.Count > 0)

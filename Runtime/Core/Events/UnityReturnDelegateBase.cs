@@ -179,6 +179,8 @@ namespace JakePerry.Unity.Events
             var result = new Type[argCount];
             for (int i = 0; i < argCount; ++i)
             {
+                // TODO: What happens if a ParameterTypedArgument returns null for ArgumentType (ie. a type is
+                // serialized, then killed, then you play the game with stale data)?.
                 result[i] = args[i].ArgumentType;
             }
 

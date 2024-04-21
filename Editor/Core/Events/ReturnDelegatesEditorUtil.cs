@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using UnityEditor;
 using UnityEngine;
 
 namespace JakePerry.Unity.Events
@@ -135,6 +136,21 @@ namespace JakePerry.Unity.Events
             GetArgumentString(paramTypes, sb);
 
             return StringBuilderCache.GetStringAndRelease(sb);
+        }
+
+        internal static bool IsMemberParameterSerializable(Type t)
+        {
+            // These types are supported out of the box.
+            if (t == typeof(int) ||
+                t == typeof(float) ||
+                t == typeof(bool) ||
+                t == typeof(string) ||
+                t == typeof(UnityEngine.Object))
+            {
+                return true;
+            }
+
+            return SerializableMethodArgument.EditorUtil.FindContainerForType(t) != null;
         }
     }
 }
