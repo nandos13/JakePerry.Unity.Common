@@ -11,22 +11,6 @@ namespace JakePerry.Unity.Events
     {
         internal enum PropertyMethodType { None, Get, Set }
 
-        private static readonly GUIContent[] _policyOptions = new GUIContent[4]
-        {
-            new GUIContent(
-                "Global (Default)",
-                "Use global error handling policy."),
-            new GUIContent(
-                "None",
-                "Ignore errors. Invocation does not proceed, and the default value is returned."),
-            new GUIContent(
-                "Log Error",
-                "Log an error. Invocation does not proceed, and the default value is returned."),
-            new GUIContent(
-                "Log Exception",
-                "An exception of type " + nameof(InvocationTargetDestroyedException) + " is thrown")
-        };
-
         private static readonly GUIContent[] _editorInvocationOptions = new GUIContent[3]
         {
             new GUIContent(
@@ -39,8 +23,6 @@ namespace JakePerry.Unity.Events
                 "Invoke Delegate",
                 "Delegate is invoked as normal in Edit mode.")
         };
-
-        internal static GUIContent[] PolicyOptions => _policyOptions;
 
         internal static GUIContent[] EditorInvocationOptions => _editorInvocationOptions;
 

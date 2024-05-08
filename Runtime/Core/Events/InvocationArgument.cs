@@ -12,6 +12,8 @@ namespace JakePerry.Unity.Events
     {
         internal abstract Type ArgumentType { get; }
         internal abstract object ArgumentValue { get; }
+
+        internal virtual string Debug_GetSerializedTypeName() => string.Empty;
     }
 
     [Serializable]
@@ -52,6 +54,11 @@ namespace JakePerry.Unity.Events
 
                 return m_resolvedType;
             }
+        }
+
+        internal sealed override string Debug_GetSerializedTypeName()
+        {
+            return m_parameterTypeName ?? string.Empty;
         }
     }
 

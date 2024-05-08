@@ -40,7 +40,10 @@ namespace JakePerry.Unity.Events
         private InvocationArgument[] m_arguments;
 
         [SerializeField]
-        private byte m_policy;
+        private byte m_targetDestroyedPolicy;
+
+        [SerializeField]
+        private byte m_failToResolveMethodPolicy;
 
         private bool m_dirty = true;
         private RuntimeInvocableCall m_call;
@@ -51,19 +54,20 @@ namespace JakePerry.Unity.Events
         /// Indicates the error handling policy that should be enacted when the invocation
         /// target is a destroyed <see cref="UnityEngine.Object"/>.
         /// </summary>
-        public TargetDestroyedErrorHandlingPolicy Policy
+        public ErrorHandlingPolicy TargetDestroyedPolicy
         {
-            get => (TargetDestroyedErrorHandlingPolicy)m_policy;
-            set
-            {
-                if (value < TargetDestroyedErrorHandlingPolicy.Default ||
-                    value > TargetDestroyedErrorHandlingPolicy.ThrowException)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(value));
-                }
+            get => (ErrorHandlingPolicy)m_targetDestroyedPolicy;
+            set => m_targetDestroyedPolicy = ReturnDelegatesUtility.ErrorPolicyToByte(value);
+        }
 
-                m_policy = (byte)(int)value;
-            }
+        /// <summary>
+        /// Indicates the error handling policy that should be enacted when the method
+        /// to invoke cannot be resolved.
+        /// </summary>
+        public ErrorHandlingPolicy FailedToResolveMethodPolicy
+        {
+            get => (ErrorHandlingPolicy)m_failToResolveMethodPolicy;
+            set => m_failToResolveMethodPolicy = ReturnDelegatesUtility.ErrorPolicyToByte(value);
         }
 
 #if UNITY_EDITOR
@@ -168,7 +172,7 @@ namespace JakePerry.Unity.Events
             return method;
         }
 
-        private static Type[] GetCachedInvocationArgumentTypes(InvocationArgument[] args)
+        private static Type[] GetCachedInvocationArgumentTypesWithValidationChecks(InvocationArgument[] args, ErrorHandlingPolicy policy)
         {
             var argCount = args?.Length ?? 0;
             if (argCount == 0)
@@ -179,9 +183,40 @@ namespace JakePerry.Unity.Events
             var result = new Type[argCount];
             for (int i = 0; i < argCount; ++i)
             {
-                // TODO: What happens if a ParameterTypedArgument returns null for ArgumentType (ie. a type is
-                // serialized, then killed, then you play the game with stale data)?.
-                result[i] = args[i].ArgumentType;
+                var t = args[i].ArgumentType;
+
+                if (t is null)
+                {
+                    if (policy == ErrorHandlingPolicy.Default)
+                    {
+                        policy = ReturnDelegatesConfig.FailedToResolveMethodPolicy;
+                    }
+
+                    if (policy > ErrorHandlingPolicy.Ignore)
+                    {
+                        var err =
+                            "Cannot resolve method; one or more serialized arguments returned a null type. The data must be manually fixed and reserialized. " +
+                            "See below for more info:\n" +
+                            "This error can occur if the argument's type is renamed, relocated or removed from the project after the data was saved.\n" +
+                            "Argument index: " +
+                            i.ToString() +
+                            "\nSerialized type name: " +
+                            args[i].Debug_GetSerializedTypeName();
+
+                        if (policy == ErrorHandlingPolicy.LogError)
+                        {
+                            ReturnDelegatesUtility.LogError(err);
+                        }
+                        else
+                        {
+                            throw new ResolveMethodFailedException(err);
+                        }
+                    }
+
+                    return null;
+                }
+
+                result[i] = t;
             }
 
             return result;
@@ -208,22 +243,22 @@ namespace JakePerry.Unity.Events
         /// Checks if invocation is allowed &amp; handles logging an error or throwing an exception
         /// in accordance with the current error handling policy when it is not allowed..
         /// </summary>
-        private static bool VerifyInvokeIsAllowed(IInvocableCall call, TargetDestroyedErrorHandlingPolicy policy)
+        private static bool VerifyInvokeIsAllowed(IInvocableCall call, ErrorHandlingPolicy policy)
         {
             bool allowed = call.AllowInvoke;
             if (!allowed)
             {
-                if (policy == TargetDestroyedErrorHandlingPolicy.Default)
+                if (policy == ErrorHandlingPolicy.Default)
                 {
                     policy = ReturnDelegatesConfig.TargetDestroyedPolicy;
                 }
 
                 // TODO: Augment error & exception with some useful data. Call site, target object id, method name perhaps...
-                if (policy == TargetDestroyedErrorHandlingPolicy.LogError)
+                if (policy == ErrorHandlingPolicy.LogError)
                 {
-                    ReturnDelegatesUtility.LogError("Target object is destroyed! Invocation will not proceed & a default value will be returned.");
+                    ReturnDelegatesUtility.LogError("Target object is destroyed! Invocation will not proceed and a default value will be returned.");
                 }
-                else if (policy == TargetDestroyedErrorHandlingPolicy.ThrowException)
+                else if (policy == ErrorHandlingPolicy.ThrowException)
                 {
                     throw new InvocationTargetDestroyedException();
                 }
@@ -240,9 +275,23 @@ namespace JakePerry.Unity.Events
 
         private MethodInfo FindMethod(Type targetType)
         {
-            var argTypes = m_argumentsDefinedByEvent
-                ? GetEventDefinedInvocationArgumentTypes()
-                : GetCachedInvocationArgumentTypes(m_arguments);
+            Type[] argTypes;
+            if (m_argumentsDefinedByEvent)
+            {
+                argTypes = GetEventDefinedInvocationArgumentTypes();
+            }
+            else
+            {
+                var policy = FailedToResolveMethodPolicy;
+                argTypes = GetCachedInvocationArgumentTypesWithValidationChecks(m_arguments, policy);
+
+                // A null array will be returned if there was a problem with serialized argument data,
+                // in which case the correct method will not be resolvable.
+                if (argTypes is null)
+                {
+                    return null;
+                }
+            }
 
             var returnType = ReturnType;
             return GetValidMethodInfo(targetType, m_targetingStaticMember, m_methodName, returnType, argTypes);
@@ -338,7 +387,7 @@ namespace JakePerry.Unity.Events
 
             if (call is not null)
             {
-                var policy = this.Policy;
+                var policy = this.TargetDestroyedPolicy;
                 if (!VerifyInvokeIsAllowed(call, policy))
                 {
                     call = null;

@@ -15,8 +15,9 @@ namespace JakePerry.Unity.Events
     [CustomPropertyDrawer(typeof(UnityReturnDelegateBase), useForChildren: true)]
     public sealed class UnityReturnDelegateDrawer : PropertyDrawer
     {
-        private const string kPolicyTooltip = "Policy used when the target invocation object is destroyed.";
-        private const string kPolicyTooltipStatic = "* Not applicable for static member delegates. *\n" + kPolicyTooltip;
+        private const string kTargetDestroyedPolicyTooltip = "Policy used when the target invocation object is destroyed.";
+        private const string kTargetDestroyedPolicyTooltipStatic = "* Not applicable for static member delegates. *\n" + kTargetDestroyedPolicyTooltip;
+        private const string kFailToResolveMethodPolicyTooltip = "Policy used when the method cannot be resolved for invocation.";
         private const string kMockingNotSerializableMessage = "Return type is not serializable. Default value will be used.";
 
         private const string kBasicSettingsTabHint = "UnityReturnDelegateDrawer.Tab.Basic";
@@ -24,6 +25,38 @@ namespace JakePerry.Unity.Events
 
         private const float kHeaderHeight = 18f;
         private const float kNextElementSpacing = 1f;
+
+        private static readonly GUIContent _policyDefaultContent = new GUIContent(
+            "Default (Global)",
+            "Use the global error handling policy for this error.");
+
+        private static readonly GUIContent _policyIgnoreContent = new GUIContent(
+            "Ignore Error",
+            "Ignore the error and fail gracefully. Invocation does not proceed, and the default value is returned.");
+
+        private static readonly GUIContent _policyLogErrorContent = new GUIContent(
+            "Log Error",
+            "Log an error. Invocation does not proceed, and the default value is returned.");
+
+        private static readonly GUIContent[] _targetDestroyedPolicyOptions = new GUIContent[4]
+        {
+            _policyDefaultContent,
+            _policyIgnoreContent,
+            _policyLogErrorContent,
+            new GUIContent(
+                "Log Exception",
+                "An exception of type " + nameof(InvocationTargetDestroyedException) + " is thrown.")
+        };
+
+        private static readonly GUIContent[] _failToResolveMethodPolicyOptions = new GUIContent[4]
+        {
+            _policyDefaultContent,
+            _policyIgnoreContent,
+            _policyLogErrorContent,
+            new GUIContent(
+                "Log Exception",
+                "An exception of type " + nameof(ResolveMethodFailedException) + " is thrown.")
+        };
 
         private sealed class State
         {
@@ -40,7 +73,8 @@ namespace JakePerry.Unity.Events
             public readonly SerializedProperty methodName;
             public readonly SerializedProperty arguments;
             public readonly SerializedProperty argumentsDefinedByEvent;
-            public readonly SerializedProperty policy;
+            public readonly SerializedProperty targetDestroyedPolicy;
+            public readonly SerializedProperty failToResolveMethodPolicy;
             public readonly SerializedProperty editorBehaviour;
             public readonly SerializedProperty editorMockValue;
 
@@ -55,7 +89,8 @@ namespace JakePerry.Unity.Events
                 arguments = property.FindPropertyRelative("m_arguments");
                 argumentsDefinedByEvent = property.FindPropertyRelative("m_argumentsDefinedByEvent");
 
-                policy = property.FindPropertyRelative("m_policy");
+                targetDestroyedPolicy = property.FindPropertyRelative("m_targetDestroyedPolicy");
+                failToResolveMethodPolicy = property.FindPropertyRelative("m_failToResolveMethodPolicy");
                 editorBehaviour = property.FindPropertyRelative("m_editorBehaviour");
                 editorMockValue = property.FindPropertyRelative("m_editorMockValue");
             }
@@ -295,15 +330,20 @@ namespace JakePerry.Unity.Events
             // TODO: Also consider putting a help box here with info stating that
             // invoking runtime logic may be dangerous.
 
-            var policyProp = _context.properties.policy;
+            var targetDestroyedPolicyProp = _context.properties.targetDestroyedPolicy;
+            var failToResolveMethodPolicyProp = _context.properties.failToResolveMethodPolicy;
             var behaviourProp = _context.properties.editorBehaviour;
             var modeProp = _context.properties.targetingStaticMember;
 
-            var policy = policyProp.intValue;
+            var targetDestroyedPolicy = targetDestroyedPolicyProp.intValue;
+            var failToResolveMethodPolicy = failToResolveMethodPolicyProp.intValue;
             var behaviour = behaviourProp.intValue;
             bool @static = modeProp.boolValue;
 
-            var policyRect = rect.WithHeight(LineHeight);
+            var policyRect0 = rect.WithHeight(LineHeight);
+            rect = rect.PadTop(LineHeight + Spacing);
+
+            var policyRect1 = rect.WithHeight(LineHeight);
             rect = rect.PadTop(LineHeight + Spacing);
 
             var behaviourRect = rect.WithHeight(LineHeight);
@@ -311,16 +351,24 @@ namespace JakePerry.Unity.Events
 
             var labelContent = GetTempContent(
                 text: "Destroyed Target Policy",
-                tooltip: @static ? kPolicyTooltipStatic : kPolicyTooltip);
-            policyRect = EditorGUI.PrefixLabel(policyRect, labelContent);
+                tooltip: @static ? kTargetDestroyedPolicyTooltipStatic : kTargetDestroyedPolicyTooltip);
+            policyRect0 = EditorGUI.PrefixLabel(policyRect0, labelContent);
 
             EditorGUI.BeginChangeCheck();
             using (new EditorGUI.DisabledScope(@static))
             {
-                policy = EditorGUI.Popup(policyRect, policy, PolicyOptions);
+                targetDestroyedPolicy = EditorGUI.Popup(policyRect0, targetDestroyedPolicy, _targetDestroyedPolicyOptions);
             }
+            if (EditorGUI.EndChangeCheck()) targetDestroyedPolicyProp.intValue = targetDestroyedPolicy;
 
-            if (EditorGUI.EndChangeCheck()) policyProp.intValue = policy;
+            labelContent = GetTempContent(
+                text: "Resolve Method Failure Policy",
+                tooltip: kFailToResolveMethodPolicyTooltip);
+            policyRect1 = EditorGUI.PrefixLabel(policyRect1, labelContent);
+
+            EditorGUI.BeginChangeCheck();
+            failToResolveMethodPolicy = EditorGUI.Popup(policyRect1, failToResolveMethodPolicy, _failToResolveMethodPolicyOptions);
+            if (EditorGUI.EndChangeCheck()) failToResolveMethodPolicyProp.intValue = failToResolveMethodPolicy;
 
             behaviourRect = EditorGUI.PrefixLabel(behaviourRect, GetTempContent("Editor Behaviour"));
 
