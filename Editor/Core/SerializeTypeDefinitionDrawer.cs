@@ -543,6 +543,8 @@ namespace JakePerry.Unity
             string text;
             if (properties.type is not null)
             {
+                // TODO: Utility method for readable type names, option to use compiler aliases.
+                //       Then, replace ReturnDelegatesEditorUtil.GetNiceTypeName.
                 text = properties.type.Name;
             }
             else

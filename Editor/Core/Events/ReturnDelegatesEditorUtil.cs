@@ -40,27 +40,19 @@ namespace JakePerry.Unity.Events
             return comp;
         }
 
-        // TODO: Share TypeSelector._builtInTypes, put it in a util class etc.
         internal static string GetNiceTypeName(Type type)
         {
-            if (type == typeof(bool)) return "bool";
-            if (type == typeof(byte)) return "byte";
-            if (type == typeof(sbyte)) return "sbyte";
-            if (type == typeof(char)) return "char";
-            if (type == typeof(float)) return "float";
-            if (type == typeof(double)) return "double";
-            if (type == typeof(decimal)) return "decimal";
-            if (type == typeof(short)) return "short";
-            if (type == typeof(int)) return "int";
-            if (type == typeof(long)) return "long";
-            if (type == typeof(ushort)) return "ushort";
-            if (type == typeof(uint)) return "uint";
-            if (type == typeof(ulong)) return "ulong";
-            if (type == typeof(nint)) return "nint";
-            if (type == typeof(nuint)) return "nuint";
-            if (type == typeof(string)) return "string";
-            if (type == typeof(object)) return "object";
-            if (type == typeof(UnityEngine.Object)) return "UnityEngine.Object";
+            var compilerAlias = CompilerAliases.GetAlias(type);
+            if (compilerAlias is not null)
+            {
+                return compilerAlias;
+            }
+
+            if (type == typeof(UnityEngine.Object))
+            {
+                return "UnityEngine.Object";
+            }
+
             return type.Name;
         }
 

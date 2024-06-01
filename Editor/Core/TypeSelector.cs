@@ -89,6 +89,42 @@ namespace JakePerry.Unity
             }
         }
 
+        private sealed class GenericConstraintCheck
+        {
+            private readonly Type m_genericParameter;
+
+            public GenericConstraintCheck(Type genericParameter) { m_genericParameter = genericParameter; }
+
+            public bool Incompatible(Type t)
+            {
+                // TODO: Implementation...
+                // Consider type:
+                // Class<T, U>
+                //  where T : IEquatable<IComparer<U>>
+                //  where U : T
+                //
+                // Both restrict each other, and we can't validate one at a time.
+                // If constraints are only one way (ie the T constraint was removed),
+                // we can disable editing the U parameter until T is fully qualified.
+                // In cases where its bi-directional, just allow one to be assigned
+                // and sort shit out after that?
+                // Perhaps a check in the type drawer that checks if a generic type is
+                // correctly defined?
+
+                // The following two members will be useful...
+                //t.GetGenericParameterConstraints;
+                //t.GenericParameterAttributes;
+
+
+
+                // TODO: Remove this later. This approach only works for generics
+                // with one parameter... Gonna need something a lot more complex :) :) :)
+                try { m_genericParameter.DeclaringType.MakeGenericType(t); }
+                catch { return true; }
+                return false;
+            }
+        }
+
         private static readonly object _scanLock = new object();
 
         private static readonly List<string> _appDomainNamespaces = new(capacity: 2048);
@@ -97,25 +133,25 @@ namespace JakePerry.Unity
 
         private static readonly Dictionary<Type, TypeDisplayNames> _displayNameCache = new();
 
-        private static readonly (Type, string)[] _builtInTypes = new (Type, string)[]
+        private static readonly Type[] _builtInTypes = new Type[]
         {
-            (typeof(bool), "bool"),
-            (typeof(byte), "byte"),
-            (typeof(sbyte), "sbyte"),
-            (typeof(char), "char"),
-            (typeof(float), "float"),
-            (typeof(double), "double"),
-            (typeof(decimal), "decimal"),
-            (typeof(short), "short"),
-            (typeof(ushort), "ushort"),
-            (typeof(int), "int"),
-            (typeof(uint), "uint"),
-            (typeof(long), "long"),
-            (typeof(ulong), "ulong"),
-            (typeof(nint), "nint"),
-            (typeof(nuint), "nuint"),
-            (typeof(string), "string"),
-            (typeof(object), "object")
+            typeof(bool),
+            typeof(byte),
+            typeof(sbyte),
+            typeof(char),
+            typeof(float),
+            typeof(double),
+            typeof(decimal),
+            typeof(short),
+            typeof(ushort),
+            typeof(int),
+            typeof(uint),
+            typeof(long),
+            typeof(ulong),
+            typeof(nint),
+            typeof(nuint),
+            typeof(string),
+            typeof(object),
         };
 
         private static Type _selectedType;
@@ -135,11 +171,6 @@ namespace JakePerry.Unity
         private CancellationTokenSource m_cancelSource;
         private readonly List<string> m_setupHintLines = new();
 
-        // TODO: Consider adding a config file for specifying render colors?
-        private static Color32 DefaultAliasColor => new Color32(86, 156, 214, 255);
-        private static Color32 DefaultClassColor => new Color32(78, 201, 176, 255);
-        private static Color32 DefaultInterfaceColor => new Color32(184, 215, 163, 255);
-        private static Color32 DefaultStructColor => new Color32(134, 198, 145, 255);
         private static Color32 NamespaceBackgroundColor => new Color32(40, 40, 40, 255);
         private static Color32 White32 => new Color32(255, 255, 255, 255);
 
@@ -212,25 +243,25 @@ namespace JakePerry.Unity
 
             var sb = StringBuilderCache.Acquire();
 
-            foreach (var tuple in _builtInTypes)
+            foreach (var t in _builtInTypes)
             {
-                string name = tuple.Item2;
+                string name = CompilerAliases.GetAlias(t);
 
                 sb.Clear();
                 sb.Append(name);
                 sb.Append(' ');
-                sb.Append(tuple.Item1.FullName);
+                sb.Append(t.FullName);
 
                 string filter = sb.ToString();
 
                 sb.Clear();
                 sb.Append('[');
-                sb.Append(tuple.Item1.FullName);
+                sb.Append(t.FullName);
                 sb.Append(']');
 
                 string braced = sb.ToString();
 
-                _displayNameCache[tuple.Item1] = new(name, filter, braced);
+                _displayNameCache[t] = new(name, filter, braced);
             }
 
             StringBuilderCache.Release(sb);
@@ -480,8 +511,9 @@ namespace JakePerry.Unity
                 }
                 else if (t is not null)
                 {
-                    if (t.IsValueType) color32 = DefaultStructColor;
-                    else color32 = t.IsInterface ? DefaultInterfaceColor : DefaultClassColor;
+                    if (t.IsValueType) color32 = EditorStylingConfig.StructColor;
+                    else if (t.IsInterface) color32 = EditorStylingConfig.InterfaceColor;
+                    else color32 = EditorStylingConfig.ClassColor;
                 }
                 else
                 {
@@ -591,7 +623,9 @@ namespace JakePerry.Unity
 
                 if (!state.allHidden)
                 {
-                    Color32? forceColor = namespc == kBuiltInTypesIdentifier ? DefaultAliasColor : null;
+                    Color32? forceColor = namespc == kBuiltInTypesIdentifier
+                        ? EditorStylingConfig.AliasColor
+                        : null;
 
                     for (int i = 0; i < state.types.Length; ++i)
                     {
@@ -955,43 +989,6 @@ namespace JakePerry.Unity
             }
         }
 
-        // TODO: Move up top
-        private sealed class GenericConstraintCheck
-        {
-            private readonly Type m_genericParameter;
-
-            public GenericConstraintCheck(Type genericParameter) { m_genericParameter = genericParameter; }
-
-            public bool Incompatible(Type t)
-            {
-                // TODO: Implementation...
-                // Consider type:
-                // Class<T, U>
-                //  where T : IEquatable<IComparer<U>>
-                //  where U : T
-                //
-                // Both restrict each other, and we can't validate one at a time.
-                // If constraints are only one way (ie the T constraint was removed),
-                // we can disable editing the U parameter until T is fully qualified.
-                // In cases where its bi-directional, just allow one to be assigned
-                // and sort shit out after that?
-                // Perhaps a check in the type drawer that checks if a generic type is
-                // correctly defined?
-
-                // The following two members will be useful...
-                //t.GetGenericParameterConstraints;
-                //t.GenericParameterAttributes;
-
-
-
-                // TODO: Remove this later. This approach only works for generics
-                // with one parameter... Gonna need something a lot more complex :) :) :)
-                try { m_genericParameter.DeclaringType.MakeGenericType(t); }
-                catch { return true; }
-                return false;
-            }
-        }
-
         private async void SetupAsync(Type current, Type genericParameter)
         {
             // TODO: Temporary measure to ignore generic constraints. Need a lot more thought
@@ -1050,10 +1047,10 @@ namespace JakePerry.Unity
                 }
 
                 var builtinTypes = new List<Type>(capacity: _builtInTypes.Length);
-                foreach (var tuple in _builtInTypes)
+                foreach (var t in _builtInTypes)
                 {
                     // TODO: Validate types, only grab those that match restriction.
-                    builtinTypes.Add(tuple.Item1);
+                    builtinTypes.Add(t);
                 }
 
                 if (builtinTypes.Count > 0)
