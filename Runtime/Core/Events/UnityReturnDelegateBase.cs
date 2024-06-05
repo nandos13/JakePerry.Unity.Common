@@ -17,6 +17,12 @@ namespace JakePerry.Unity.Events
             internal const byte kReturnDefaultValue = 0;
             internal const byte kReturnMockValue = 1;
             internal const byte kInvokeInEditMode = 2;
+
+            internal static class MockValueSerializeModes
+            {
+                internal const byte kSerializeField = 0;
+                internal const byte kSerializeReference = 1;
+            }
         }
 
 #endif // UNITY_EDITOR
@@ -370,7 +376,7 @@ namespace JakePerry.Unity.Events
 
 #if UNITY_EDITOR
 
-            if (UnityEditor.EditorApplication.isPlaying)
+            if (!UnityEditor.EditorApplication.isPlaying)
             {
                 call = ConstructEditorModeCall();
                 if (call is not null)
@@ -409,13 +415,20 @@ namespace JakePerry.Unity.Events
 
         [SerializeField]
         private byte m_editorBehaviour;
+        // TODO: Improve this. I think its acceptable to just use SerializeReference, but need
+        // a way to select types etc.
         [SerializeField]
-        private TResult m_editorMockValue;
+        private byte m_editorMockSerializeMode;
+        [SerializeField]
+        private TResult m_editorMockValueSF;
+        [SerializeReference]
+        private TResult m_editorMockValueSR;
 
 #endif // UNITY_EDITOR
 
         internal protected sealed override Type ReturnType => typeof(TResult);
 
+#if UNITY_EDITOR
         internal sealed override IInvocableCall ConstructEditorModeCall()
         {
             if (m_editorBehaviour == EditorBehaviours.kReturnDefaultValue)
@@ -424,10 +437,19 @@ namespace JakePerry.Unity.Events
             }
             else if (m_editorBehaviour == EditorBehaviours.kReturnMockValue)
             {
-                return new MockInvocableCall<TResult>(m_editorMockValue);
+                TResult mock = m_editorMockValueSF;
+
+                if (m_editorMockSerializeMode == EditorBehaviours.MockValueSerializeModes.kSerializeReference &&
+                    !typeof(TResult).IsValueType)
+                {
+                    mock = m_editorMockValueSR;
+                }
+
+                return new MockInvocableCall<TResult>(mock);
             }
 
             return null;
         }
+#endif // UNITY_EDITOR
     }
 }

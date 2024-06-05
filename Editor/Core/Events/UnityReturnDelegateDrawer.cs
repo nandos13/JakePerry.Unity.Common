@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Text;
 using UnityEditor;
 using UnityEditor.Callbacks;
 using UnityEditorInternal;
@@ -9,6 +8,7 @@ using UnityEngine;
 
 using static JakePerry.Unity.EditorHelpersStatic;
 using static JakePerry.Unity.Events.ReturnDelegatesEditorUtil;
+using static JakePerry.Unity.Events.UnityReturnDelegateBase;
 
 namespace JakePerry.Unity.Events
 {
@@ -18,6 +18,7 @@ namespace JakePerry.Unity.Events
         private const string kTargetDestroyedPolicyTooltip = "Policy used when the target invocation object is destroyed.";
         private const string kTargetDestroyedPolicyTooltipStatic = "* Not applicable for static member delegates. *\n" + kTargetDestroyedPolicyTooltip;
         private const string kFailToResolveMethodPolicyTooltip = "Policy used when the method cannot be resolved for invocation.";
+        private const string kEditorBehaviourTooltip = "Behaviour when the delegate is invoked outside of Play Mode in the Editor.\nNote that executing runtime logic while the game is not running may be erroneous and potentially cause unwanted modifications to serialized data.";
         private const string kMockingNotSerializableMessage = "Return type is not serializable. Default value will be used.";
 
         private const string kBasicSettingsTabHint = "UnityReturnDelegateDrawer.Tab.Basic";
@@ -76,7 +77,9 @@ namespace JakePerry.Unity.Events
             public readonly SerializedProperty targetDestroyedPolicy;
             public readonly SerializedProperty failToResolveMethodPolicy;
             public readonly SerializedProperty editorBehaviour;
-            public readonly SerializedProperty editorMockValue;
+            public readonly SerializedProperty editorMockSerializeMode;
+            public readonly SerializedProperty editorMockValueSF;
+            public readonly SerializedProperty editorMockValueSR;
 
             public PropertyCache(SerializedProperty property)
             {
@@ -92,7 +95,9 @@ namespace JakePerry.Unity.Events
                 targetDestroyedPolicy = property.FindPropertyRelative("m_targetDestroyedPolicy");
                 failToResolveMethodPolicy = property.FindPropertyRelative("m_failToResolveMethodPolicy");
                 editorBehaviour = property.FindPropertyRelative("m_editorBehaviour");
-                editorMockValue = property.FindPropertyRelative("m_editorMockValue");
+                editorMockSerializeMode = property.FindPropertyRelative("m_editorMockSerializeMode");
+                editorMockValueSF = property.FindPropertyRelative("m_editorMockValueSF");
+                editorMockValueSR = property.FindPropertyRelative("m_editorMockValueSR");
             }
         }
 
@@ -146,6 +151,28 @@ namespace JakePerry.Unity.Events
                 _memberCache[path] = member;
             }
             return member;
+        }
+
+        private static void ValidateSerializedData(SerializedProperty property)
+        {
+            var mockModeProp = _context.properties.editorMockSerializeMode;
+            var mockMode = mockModeProp.intValue;
+
+            // TODO: If the return type is a value type, we can only use SerializeField.
+            // If it's an abstract or interface type, we can only use SerializeReference.
+            // If we use SR, do I need to provide drawer logic for changing the object reference?
+            // It currently just renders blank because 'null' is assigned, (unless I '= new()' it in cctor).
+
+            //if (mockMode == EditorBehaviours.MockValueSerializeModes.kSerializeField)
+            //{ }
+            //else if (mockMode == EditorBehaviours.MockValueSerializeModes.kSerializeReference)
+            //{ }
+            //else
+            {
+                mockModeProp.intValue = EditorBehaviours.MockValueSerializeModes.kSerializeField;
+            }
+
+            // TODO: More stuff probably should be validated here
         }
 
         private static PropertyCache GetChildProperties(SerializedProperty property)
@@ -370,28 +397,44 @@ namespace JakePerry.Unity.Events
             failToResolveMethodPolicy = EditorGUI.Popup(policyRect1, failToResolveMethodPolicy, _failToResolveMethodPolicyOptions);
             if (EditorGUI.EndChangeCheck()) failToResolveMethodPolicyProp.intValue = failToResolveMethodPolicy;
 
-            behaviourRect = EditorGUI.PrefixLabel(behaviourRect, GetTempContent("Editor Behaviour"));
+            labelContent = GetTempContent(
+                text: "Editor Behaviour",
+                tooltip: kEditorBehaviourTooltip);
+            behaviourRect = EditorGUI.PrefixLabel(behaviourRect, labelContent);
 
             EditorGUI.BeginChangeCheck();
             behaviour = EditorGUI.Popup(behaviourRect, behaviour, EditorInvocationOptions);
 
             if (EditorGUI.EndChangeCheck()) behaviourProp.intValue = behaviour;
 
-            if (behaviour == UnityReturnDelegateBase.EditorBehaviours.kReturnMockValue)
+            if (behaviour == EditorBehaviours.kReturnMockValue)
             {
                 Rect mockValueRect;
-                var mockProp = _context.properties.editorMockValue;
-                if (mockProp == null)
+                var mockModeProp = _context.properties.editorMockSerializeMode;
+                //if (mockProp == null)
+                // TODO: Need to check if the type isn't serializable, not sure how to do that with SerializeReference (ie.
+                // there are no inheriting types available either).
+                if (false)
                 {
                     mockValueRect = rect.WithHeight(LineHeight);
                     EditorGUI.HelpBox(mockValueRect, kMockingNotSerializableMessage, MessageType.Warning);
                 }
                 else
                 {
+                    // TODO: If SF & SR are both supported, have the option to change the mode
+
+                    var mockProp = mockModeProp.intValue == EditorBehaviours.MockValueSerializeModes.kSerializeField
+                        ? _context.properties.editorMockValueSF
+                        : _context.properties.editorMockValueSR;
+
                     mockValueRect = rect.WithHeight(EditorGUI.GetPropertyHeight(mockProp, true));
 
                     // TODO: Check this when nested, make sure indent is correct.
-                    mockValueRect = EditorGUI.PrefixLabel(mockValueRect, GetTempContent("Mock Value"));
+                    EditorGUI.indentLevel++;
+                    {
+                        mockValueRect = EditorGUI.PrefixLabel(mockValueRect, GetTempContent("Mock Value"));
+                    }
+                    EditorGUI.indentLevel--;
 
                     EditorGUI.PropertyField(mockValueRect, mockProp, GUIContent.none, true);
                 }
@@ -458,8 +501,6 @@ namespace JakePerry.Unity.Events
 
         private void DrawTarget(ref Rect rect)
         {
-            var property = _context.properties.property;
-
             var modeProp = _context.properties.targetingStaticMember;
             var staticTargetProp = _context.properties.staticTargetType;
             var targetProp = _context.properties.target;
@@ -657,7 +698,7 @@ namespace JakePerry.Unity.Events
                     }
 
                 list2.Add(m);
-            
+
             SKIP_MEMBER:
                 continue;
             }
@@ -789,7 +830,7 @@ namespace JakePerry.Unity.Events
                             currentArgumentTypes = Array.Empty<Type>();
                         }
 
-                        currentMethod = UnityReturnDelegateBase.GetValidMethodInfo(invocationType, @static, methodNameProp.stringValue, metadata.returnType, currentArgumentTypes, out methodResolveError);
+                        currentMethod = GetValidMethodInfo(invocationType, @static, methodNameProp.stringValue, metadata.returnType, currentArgumentTypes, out methodResolveError);
 
                         bool methodIsMissing = currentMethod is null && !string.IsNullOrEmpty(methodNameProp.stringValue);
                         if (methodIsMissing)
@@ -862,56 +903,78 @@ namespace JakePerry.Unity.Events
         {
             // TODO: Use an AnimBool etc when swapping between basic/advanced settings
 
-            var state = GetState(property);
-            var properties = GetChildProperties(property);
+            var serializedMember = GetMember(property);
 
-            // Header content + body padding
-            float height = kHeaderHeight + 10f + Spacing;
-
-            if (state.viewingAdvancedSettings)
+            float height;
+            try
             {
-                height += LineHeight + LineHeight + Spacing;
-                // TODO: Args height
+                var state = GetState(property);
+                var properties = GetChildProperties(property);
+                var metadata = DelegateMetadata.GetMetadata(serializedMember.MemberType);
+                _context = new Context(properties, serializedMember, metadata, state);
 
-                var behaviour = properties.editorBehaviour.intValue;
-                if (behaviour == UnityReturnDelegateBase.EditorBehaviours.kReturnMockValue)
-                {
-                    var mockProp = properties.editorMockValue;
+                ValidateSerializedData(property);
 
-                    height += Spacing;
-                    height += mockProp != null
-                        ? EditorGUI.GetPropertyHeight(mockProp, GUIContent.none, true)
-                        : LineHeight;
-                }
-            }
-            else
-            {
-                float targetHeight;
-                if (properties.targetingStaticMember.boolValue)
+                // Header content + body padding
+                height = kHeaderHeight + 10f + Spacing;
+
+                if (state.viewingAdvancedSettings)
                 {
-                    targetHeight = SerializeTypeDefinitionDrawer.GetPropertyHeight(properties.staticTargetType, false);
+                    height += LineHeight + LineHeight + LineHeight + Spacing + Spacing;
+                    // TODO: Args height
+
+                    var behaviour = properties.editorBehaviour.intValue;
+                    if (behaviour == EditorBehaviours.kReturnMockValue)
+                    {
+                        var mockModeProp = properties.editorMockSerializeMode;
+
+                        height += Spacing;
+
+                        // TODO: Same as the draw method
+                        if (false)
+                        {
+                            height += LineHeight;
+                        }
+                        else
+                        {
+                            var mockProp = mockModeProp.intValue == EditorBehaviours.MockValueSerializeModes.kSerializeField
+                                ? _context.properties.editorMockValueSF
+                                : _context.properties.editorMockValueSR;
+
+                            height += EditorGUI.GetPropertyHeight(mockProp, GUIContent.none, true);
+                        }
+                    }
                 }
                 else
                 {
-                    targetHeight = IsGameObjectOrComponentReference(properties.target)
-                        ? LineHeight + LineHeight + Spacing
-                        : LineHeight;
+                    float targetHeight;
+                    if (properties.targetingStaticMember.boolValue)
+                    {
+                        targetHeight = SerializeTypeDefinitionDrawer.GetPropertyHeight(properties.staticTargetType, false);
+                    }
+                    else
+                    {
+                        targetHeight = IsGameObjectOrComponentReference(properties.target)
+                            ? LineHeight + LineHeight + Spacing
+                            : LineHeight;
+                    }
+
+                    var methodAndArgsHeight = LineHeight;
+                    if (!properties.argumentsDefinedByEvent.boolValue)
+                    {
+                        // TODO: Calc arguments height
+                        methodAndArgsHeight += 0;
+                    }
+
+                    height += Spacing + Mathf.Max(targetHeight, methodAndArgsHeight);
                 }
 
-                var methodAndArgsHeight = LineHeight;
-                if (!properties.argumentsDefinedByEvent.boolValue)
-                {
-                    // TODO: Calc arguments height
-                    methodAndArgsHeight += 0;
-                }
+                // TODO: Arguments expanded? add height
 
-                height += Spacing + Mathf.Max(targetHeight, methodAndArgsHeight);
+                // Padding before next element
+                height += kNextElementSpacing;
             }
-
-            // TODO: Arguments expanded? add height
-
-            // Padding before next element
-            height += kNextElementSpacing;
+            finally { _context = default; }
 
             return height;
         }
@@ -923,8 +986,11 @@ namespace JakePerry.Unity.Events
             try
             {
                 var state = GetState(property);
+                var properties = GetChildProperties(property);
                 var metadata = DelegateMetadata.GetMetadata(serializedMember.MemberType);
-                _context = new Context(GetChildProperties(property), serializedMember, metadata, state);
+                _context = new Context(properties, serializedMember, metadata, state);
+
+                ValidateSerializedData(property);
 
                 // This is added as padding before next element
                 position.height -= kNextElementSpacing;
@@ -960,7 +1026,7 @@ namespace JakePerry.Unity.Events
 
                         if (EditorGUI.EndChangeCheck())
                         {
-                            _context.properties.methodName.stringValue = null;
+                            properties.methodName.stringValue = null;
                         }
 
                         // TODO: Does this need to calculate method content height or just pass by ref like DrawTarget?
