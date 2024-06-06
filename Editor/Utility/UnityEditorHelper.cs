@@ -51,18 +51,38 @@ namespace JakePerry.Unity
                 m_captureStack = ResolveStack(m_propertyPath);
             }
 
-            private static ValueMemberInfo GetMemberFromType(Type type, string memberName)
+            private static bool TryGetCachedMember(Type type, ReadOnlySpan<char> memberName, out ValueMemberInfo cached)
+            {
+                foreach (var pair in _memberCache)
+                {
+                    var tuple = pair.Key;
+                    if (tuple.Item1 == type &&
+                        memberName.Equals(tuple.Item2, StringComparison.Ordinal))
+                    {
+                        cached = pair.Value;
+                        return true;
+                    }
+                }
+
+                cached = default;
+                return false;
+            }
+
+            private static ValueMemberInfo GetMemberFromType(Type type, ReadOnlySpan<char> memberName)
             {
                 const MemberTypes kMemberFlags = MemberTypes.Field | MemberTypes.Property;
                 const BindingFlags kBindingFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
                 const BindingFlags kBaseTypeBindingFlags = BindingFlags.NonPublic | BindingFlags.Instance;
 
-                if (_memberCache.TryGetValue((type, memberName), out ValueMemberInfo cached))
+                if (TryGetCachedMember(type, memberName, out ValueMemberInfo cached))
+                {
                     return cached;
+                }
 
                 var originalType = type;
 
-                var members = type.GetMember(memberName, kMemberFlags, kBindingFlags);
+                var nameStr = memberName.ToString();
+                var members = type.GetMember(nameStr, kMemberFlags, kBindingFlags);
 
                 // If no members are found, search up the type hierarchy for a matching private member
                 while ((members?.Length ?? 0) == 0)
@@ -72,13 +92,13 @@ namespace JakePerry.Unity
                     if (type is null)
                         break;
 
-                    members = type.GetMember(memberName, kMemberFlags, kBaseTypeBindingFlags);
+                    members = type.GetMember(nameStr, kMemberFlags, kBaseTypeBindingFlags);
                 }
 
                 // Throw an exception if the member is not found (should never happen)
                 if ((members?.Length ?? 0) == 0)
                 {
-                    throw new Exception($"Failed to find the serialized member with name '{memberName}' from type {originalType} via reflection.");
+                    throw new Exception($"Failed to find the serialized member with name '{nameStr}' from type {originalType} via reflection.");
                 }
 
                 // Not sure if this could ever happen if we're only specifying the Field | Property flags, but detect this just in case...
@@ -88,7 +108,7 @@ namespace JakePerry.Unity
                 }
 
                 var m = ValueMemberInfo.FromMemberInfo(members[0]);
-                _memberCache[(originalType, memberName)] = m;
+                _memberCache[(originalType, nameStr)] = m;
 
                 return m;
             }
@@ -154,15 +174,15 @@ namespace JakePerry.Unity
 
                         var target = nextTarget;
 
-                        var memberName = path.Substring(segmentOffset, segmentCount);
+                        var memberName = path.AsSpan(segmentOffset, segmentCount);
 
                         // Special case: Handle cases where we're attempting to access items in an array or List<T>
                         if (memberName.StartsWith(kArrayExpression, StringComparison.Ordinal))
                         {
-                            Debug.Assert(i > 0);
-
-                            var numberStr = memberName.AsSpan(kArrayExpression.Length, memberName.Length - 1 - kArrayExpression.Length);
+                            var numberStr = memberName.Slice(kArrayExpression.Length, memberName.Length - 1 - kArrayExpression.Length);
                             var index = int.Parse(numberStr, style: NumberStyles.Integer);
+
+                            Debug.Assert(index > -1);
 
                             var lastCapture = stack.Peek();
 
