@@ -4,9 +4,8 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
-using static JakePerry.Unity.TypeSerializationUtility;
-
 using static JakePerry.Unity.EditorHelpersStatic;
+using static JakePerry.Unity.TypeSerializationUtility;
 
 namespace JakePerry.Unity
 {
@@ -16,12 +15,6 @@ namespace JakePerry.Unity
     public sealed class SerializeTypeDefinitionDrawer : PropertyDrawer
     {
         private const float kArgPaddingV = 4;
-
-        private sealed class TypeSelectArgs
-        {
-            public SerializedProperty property;
-            public Type type;
-        }
 
         private sealed class Properties
         {
@@ -74,8 +67,9 @@ namespace JakePerry.Unity
                 if (_genericArgNameStyle is null)
                 {
                     _genericArgNameStyle = new GUIStyle(EditorStyles.miniLabel);
-                    _genericArgNameStyle.hover.textColor = Color.yellow;
                 }
+                // Note: Hover color is applied every time in case the user changes the color.
+                _genericArgNameStyle.hover.textColor = EditorStylingConfig.TypeHoverColor;
                 return _genericArgNameStyle;
             }
         }
@@ -86,12 +80,15 @@ namespace JakePerry.Unity
             {
                 if (_displayNameStyle is null)
                 {
-                    _displayNameStyle = new GUIStyle(EditorStyles.miniLabel);
-                    _displayNameStyle.alignment = TextAnchor.UpperLeft;
-                    _displayNameStyle.hover.textColor = Color.yellow;
+                    _displayNameStyle = new GUIStyle(EditorStyles.miniLabel)
+                    {
+                        alignment = TextAnchor.UpperLeft
+                    };
                     _displayNameStyle.padding.left = 0;
                     _displayNameStyle.padding.right = 0;
                 }
+                // Note: Hover color is applied every time in case the user changes the color.
+                _displayNameStyle.hover.textColor = EditorStylingConfig.TypeHoverColor;
                 return _displayNameStyle;
             }
         }
@@ -370,7 +367,7 @@ namespace JakePerry.Unity
             }
         }
 
-        private static void DrawTypeSelectRect(Rect position, SerializedProperty property, GUIContent content, Type t, Type genericParameter)
+        internal static bool DrawTypeSelectRect(Rect position, GUIContent content, ref Type t, Type genericParameter)
         {
             const string kHint = "SerializeTypeDefinitionDrawer.TypeSelectorButton";
 
@@ -381,15 +378,26 @@ namespace JakePerry.Unity
                 StringComparer.Ordinal.Equals(current.commandName, TypeSelector.SelectionUpdatedCommand) &&
                 TypeSelector.ControlID == id)
             {
-                AssignType(TypeSelector.SelectedType, property);
-
-                property.serializedObject.ApplyModifiedProperties();
-                GUIUtility.ExitGUI();
+                t = TypeSelector.SelectedType;
+                return true;
             }
 
             if (EditorGUIEx.ObjectFieldButton(position, content, id))
             {
                 TypeSelector.OpenTypeSelector(id, t, genericParameter);
+            }
+
+            return false;
+        }
+
+        private static void DrawTypeSelectRect(Rect position, SerializedProperty property, GUIContent content, Type t, Type genericParameter)
+        {
+            if (DrawTypeSelectRect(position, content, ref t, genericParameter))
+            {
+                AssignType(t, property);
+
+                property.serializedObject.ApplyModifiedProperties();
+                GUIUtility.ExitGUI();
             }
         }
 
@@ -615,23 +623,19 @@ namespace JakePerry.Unity
             }
         }
 
-        // TODO: Get some better colors, rename this.
-        // TODO: Perhaps also better color schemes, ie. Odd index gets blue/green,
-        //       even index gets some red, pink, purple etc.
-        private static readonly Color32[] _cc = new[]
-        {
-            new Color32(214, 157, 133, 255),
-            new Color32(156, 220, 254, 255),
-            new Color32(216, 160, 223, 255)
-        };
-
         private static void DrawTypeName(List<NameSegmentData> segments, GUIStyle style, int hoverIndex)
         {
             if (Event.current.type != EventType.Repaint) return;
 
+            var swatch = EditorStylingConfig.TypeDisplaySwatch.Colors;
+            int colorCount = swatch.Length;
+
             foreach (var o in segments)
             {
-                var c = _cc[o.propertyIndex % _cc.Length];
+                var c = colorCount > 0
+                    ? swatch[o.propertyIndex % colorCount]
+                    : (EditorGUIUtility.isProSkin ? Color24.White : Color24.Black);
+
                 style.normal.textColor = c;
 
                 bool hover = o.propertyIndex == hoverIndex;
