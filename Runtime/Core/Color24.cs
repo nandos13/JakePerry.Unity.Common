@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
@@ -32,6 +33,87 @@ namespace JakePerry.Unity
         /// </summary>
         [FieldOffset(2)]
         public byte b;
+
+        /// <summary>
+        /// RGB = (0, 0, 0)
+        /// </summary>
+        public static Color24 Black
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => new Color24(0);
+        }
+
+        /// <summary>
+        /// RGB = (255, 255, 255)
+        /// </summary>
+        public static Color24 White
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => new Color24(255);
+        }
+
+        /// <summary>
+        /// RGB = (127, 127, 127)
+        /// </summary>
+        public static Color24 Grey
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => new Color24(127);
+        }
+
+        /// <summary>
+        /// RGB = (255, 0, 0)
+        /// </summary>
+        public static Color24 Red
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => new Color24(255, 0, 0);
+        }
+
+        /// <summary>
+        /// RGB = (0, 255, 0)
+        /// </summary>
+        public static Color24 Green
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => new Color24(0, 255, 0);
+        }
+
+        /// <summary>
+        /// RGB = (0, 0, 255)
+        /// </summary>
+        public static Color24 Blue
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => new Color24(0, 0, 255);
+        }
+
+        /// <summary>
+        /// RGB = (255, 255, 0)
+        /// </summary>
+        public static Color24 Yellow
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => new Color24(255, 255, 0);
+        }
+
+        /// <summary>
+        /// RGB = (255, 0, 255)
+        /// </summary>
+        public static Color24 Magenta
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => new Color24(255, 0, 255);
+        }
+
+        /// <summary>
+        /// RGB = (0, 255, 255)
+        /// </summary>
+        public static Color24 Cyan
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => new Color24(0, 255, 255);
+        }
 
         public byte this[int index]
         {
@@ -128,6 +210,18 @@ namespace JakePerry.Unity
         public static explicit operator Color24(Color32 c32)
         {
             return new Color24(c32.r, c32.g, c32.b);
+        }
+
+        public static implicit operator Color(Color24 c24)
+        {
+            var c32 = (Color32)c24;
+            return (Color)c32;
+        }
+
+        public static explicit operator Color24(Color c)
+        {
+            var c32 = (Color32)c;
+            return (Color24)c32;
         }
     }
 }
