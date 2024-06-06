@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
@@ -40,21 +39,11 @@ namespace JakePerry.Unity
         [SettingsProviderGroup]
         private static SettingsProvider[] CreateSettingsProviders()
         {
-            const BindingFlags kFlags = BindingFlags.Static | BindingFlags.NonPublic;
-
-            var loadMethod = ReflectionEx.GetMethod(typeof(RuntimeSettingsBase), "Load", kFlags, new ParamsArray<Type>(typeof(bool)));
-            var genericTypeArgs = new Type[1];
-
-            var invokeArgs = new object[1] { (object)false };
-
             var list = new List<SettingsProvider>();
 
             foreach (var t in TypeCache.GetTypesDerivedFrom(typeof(RuntimeSettingsBase)))
             {
-                genericTypeArgs[0] = t;
-                var method = loadMethod.MakeGenericMethod(genericTypeArgs);
-
-                var settings = (RuntimeSettingsBase)method.Invoke(null, invokeArgs);
+                var settings = RuntimeSettingsBase.Load(false, t, out _);
                 if (settings != null)
                 {
                     string path;
