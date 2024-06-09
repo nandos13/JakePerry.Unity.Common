@@ -77,9 +77,7 @@ namespace JakePerry.Unity.Events
             public readonly SerializedProperty targetDestroyedPolicy;
             public readonly SerializedProperty failToResolveMethodPolicy;
             public readonly SerializedProperty editorBehaviour;
-            public readonly SerializedProperty editorMockSerializeMode;
-            public readonly SerializedProperty editorMockValueSF;
-            public readonly SerializedProperty editorMockValueSR;
+            public readonly SerializedProperty editorMockValue;
 
             public PropertyCache(SerializedProperty property)
             {
@@ -95,9 +93,7 @@ namespace JakePerry.Unity.Events
                 targetDestroyedPolicy = property.FindPropertyRelative("m_targetDestroyedPolicy");
                 failToResolveMethodPolicy = property.FindPropertyRelative("m_failToResolveMethodPolicy");
                 editorBehaviour = property.FindPropertyRelative("m_editorBehaviour");
-                editorMockSerializeMode = property.FindPropertyRelative("m_editorMockSerializeMode");
-                editorMockValueSF = property.FindPropertyRelative("m_editorMockValueSF");
-                editorMockValueSR = property.FindPropertyRelative("m_editorMockValueSR");
+                editorMockValue = property.FindPropertyRelative("m_editorMockValue");
             }
         }
 
@@ -155,23 +151,6 @@ namespace JakePerry.Unity.Events
 
         private static void ValidateSerializedData(SerializedProperty property)
         {
-            var mockModeProp = _context.properties.editorMockSerializeMode;
-            var mockMode = mockModeProp.intValue;
-
-            // TODO: If the return type is a value type, we can only use SerializeField.
-            // If it's an abstract or interface type, we can only use SerializeReference.
-            // If we use SR, do I need to provide drawer logic for changing the object reference?
-            // It currently just renders blank because 'null' is assigned, (unless I '= new()' it in cctor).
-
-            //if (mockMode == EditorBehaviours.MockValueSerializeModes.kSerializeField)
-            //{ }
-            //else if (mockMode == EditorBehaviours.MockValueSerializeModes.kSerializeReference)
-            //{ }
-            //else
-            {
-                mockModeProp.intValue = EditorBehaviours.MockValueSerializeModes.kSerializeField;
-            }
-
             // TODO: More stuff probably should be validated here
         }
 
@@ -410,23 +389,14 @@ namespace JakePerry.Unity.Events
             if (behaviour == EditorBehaviours.kReturnMockValue)
             {
                 Rect mockValueRect;
-                var mockModeProp = _context.properties.editorMockSerializeMode;
-                //if (mockProp == null)
-                // TODO: Need to check if the type isn't serializable, not sure how to do that with SerializeReference (ie.
-                // there are no inheriting types available either).
-                if (false)
+                var mockProp = _context.properties.editorMockValue;
+                if (mockProp == null)
                 {
                     mockValueRect = rect.WithHeight(LineHeight);
                     EditorGUI.HelpBox(mockValueRect, kMockingNotSerializableMessage, MessageType.Warning);
                 }
                 else
                 {
-                    // TODO: If SF & SR are both supported, have the option to change the mode
-
-                    var mockProp = mockModeProp.intValue == EditorBehaviours.MockValueSerializeModes.kSerializeField
-                        ? _context.properties.editorMockValueSF
-                        : _context.properties.editorMockValueSR;
-
                     mockValueRect = rect.WithHeight(EditorGUI.GetPropertyHeight(mockProp, true));
 
                     // TODO: Check this when nested, make sure indent is correct.
@@ -926,22 +896,17 @@ namespace JakePerry.Unity.Events
                     var behaviour = properties.editorBehaviour.intValue;
                     if (behaviour == EditorBehaviours.kReturnMockValue)
                     {
-                        var mockModeProp = properties.editorMockSerializeMode;
+                        var mockProp = _context.properties.editorMockValue;
 
                         height += Spacing;
 
-                        // TODO: Same as the draw method
-                        if (false)
+                        if (mockProp == null)
                         {
                             height += LineHeight;
                         }
                         else
                         {
-                            var mockProp = mockModeProp.intValue == EditorBehaviours.MockValueSerializeModes.kSerializeField
-                                ? _context.properties.editorMockValueSF
-                                : _context.properties.editorMockValueSR;
-
-                            height += EditorGUI.GetPropertyHeight(mockProp, GUIContent.none, true);
+                            height += EditorGUI.GetPropertyHeight(mockProp, true);
                         }
                     }
                 }

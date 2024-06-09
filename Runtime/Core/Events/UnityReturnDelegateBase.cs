@@ -17,12 +17,6 @@ namespace JakePerry.Unity.Events
             internal const byte kReturnDefaultValue = 0;
             internal const byte kReturnMockValue = 1;
             internal const byte kInvokeInEditMode = 2;
-
-            internal static class MockValueSerializeModes
-            {
-                internal const byte kSerializeField = 0;
-                internal const byte kSerializeReference = 1;
-            }
         }
 
 #endif // UNITY_EDITOR
@@ -415,14 +409,21 @@ namespace JakePerry.Unity.Events
 
         [SerializeField]
         private byte m_editorBehaviour;
-        // TODO: Improve this. I think its acceptable to just use SerializeReference, but need
-        // a way to select types etc.
+
+        /* TODO: Revise using [SerializeReference] here and for other serialized arguments.
+         * Unfortunately, I came across several issues.
+         * Because the field is a generic type, any types that use a struct type (value type
+         * that isn't one of Unity's native handled types like float) for TResult
+         * cause Unity to log an error on compilation.
+         * I had an idea that will need more investigation, leaving notes here for another time:
+         * 1. Change this field to an object type instead of generic TResult.
+         * 2. Create a wrapper type that holds the actual argument.
+         * 3. Again try having two separate fields, one SerializeField, one SerializeReference.
+         * 4. Try using SerializedPropertyType to detect for managed ref, only use the SR one in that case.
+         */
         [SerializeField]
-        private byte m_editorMockSerializeMode;
-        [SerializeField]
-        private TResult m_editorMockValueSF;
-        [SerializeReference]
-        private TResult m_editorMockValueSR;
+        //[SerializeReference]
+        private TResult m_editorMockValue;
 
 #endif // UNITY_EDITOR
 
@@ -437,15 +438,7 @@ namespace JakePerry.Unity.Events
             }
             else if (m_editorBehaviour == EditorBehaviours.kReturnMockValue)
             {
-                TResult mock = m_editorMockValueSF;
-
-                if (m_editorMockSerializeMode == EditorBehaviours.MockValueSerializeModes.kSerializeReference &&
-                    !typeof(TResult).IsValueType)
-                {
-                    mock = m_editorMockValueSR;
-                }
-
-                return new MockInvocableCall<TResult>(mock);
+                return new MockInvocableCall<TResult>(m_editorMockValue);
             }
 
             return null;
