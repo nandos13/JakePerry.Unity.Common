@@ -16,6 +16,14 @@ namespace JakePerry.Unity
         /// </summary>
         public string Path => m_path;
 
+        /// <summary>
+        /// Relative display order of this object in the editor window.
+        /// <para/>
+        /// This is only used if more than one settings object is displayed
+        /// at the same path.
+        /// </summary>
+        public int Order { get; set; } = 0;
+
         /// <param name="path">
         /// Display path in the settings menu.
         /// </param>

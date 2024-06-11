@@ -511,9 +511,9 @@ namespace JakePerry.Unity
                 }
                 else if (t is not null)
                 {
-                    if (t.IsValueType) color32 = EditorStylingConfig.StructColor;
-                    else if (t.IsInterface) color32 = EditorStylingConfig.InterfaceColor;
-                    else color32 = EditorStylingConfig.ClassColor;
+                    if (t.IsValueType) color32 = CodeDisplayStyleConfig.StructColor;
+                    else if (t.IsInterface) color32 = CodeDisplayStyleConfig.InterfaceColor;
+                    else color32 = CodeDisplayStyleConfig.ClassColor;
                 }
                 else
                 {
@@ -624,7 +624,7 @@ namespace JakePerry.Unity
                 if (!state.allHidden)
                 {
                     Color32? forceColor = namespc == kBuiltInTypesIdentifier
-                        ? EditorStylingConfig.AliasColor
+                        ? CodeDisplayStyleConfig.AliasColor
                         : null;
 
                     for (int i = 0; i < state.types.Length; ++i)

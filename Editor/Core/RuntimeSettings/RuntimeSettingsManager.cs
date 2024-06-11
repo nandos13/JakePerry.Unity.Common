@@ -1,6 +1,9 @@
+using JakePerry.Collections;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
+using UnityEngine;
 
 namespace JakePerry.Unity
 {
@@ -12,6 +15,14 @@ namespace JakePerry.Unity
     [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members")]
     internal static class RuntimeSettingsManager
     {
+        private struct Metadata : IComparable<Metadata>
+        {
+            public RuntimeSettingsBase settings;
+            public int order;
+
+            public int CompareTo(Metadata other) => order.CompareTo(other.order);
+        }
+
         [InitializeOnLoadMethod]
         [MenuItem(Project.kContextMenuItemsPath + "Settings/Create missing settings assets")]
         private static void CreateMissingSettingsAssets()
@@ -39,7 +50,7 @@ namespace JakePerry.Unity
         [SettingsProviderGroup]
         private static SettingsProvider[] CreateSettingsProviders()
         {
-            var list = new List<SettingsProvider>();
+            var dict = new ContiguousDictionary<string, List<Metadata>>(Comparers<string>.Create(StringComparer.Ordinal));
 
             foreach (var t in TypeCache.GetTypesDerivedFrom(typeof(RuntimeSettingsBase)))
             {
@@ -59,8 +70,31 @@ namespace JakePerry.Unity
                         path = $"Project/{niceName}";
                     }
 
-                    list.Add(new ScriptableSettingsProvider(settings, path, false));
+                    if (!dict.TryGetValue(path, out var metadata))
+                    {
+                        dict[path] = metadata = new List<Metadata>(capacity: 4);
+                    }
+
+                    metadata.Add(new Metadata { settings = settings, order = pathAttr?.Order ?? 0 });
                 }
+            }
+
+            var list = new List<SettingsProvider>();
+            var list2 = new List<ScriptableObject>();
+
+            foreach (var pair in dict)
+            {
+                var path = pair.Key;
+                var metadata = pair.Value;
+                metadata.Sort();
+
+                list2.Clear();
+                foreach (var m in metadata)
+                {
+                    list2.Add(m.settings);
+                }
+
+                list.Add(new ScriptableSettingsProvider(list2, path, false));
             }
 
             return list.ToArray();

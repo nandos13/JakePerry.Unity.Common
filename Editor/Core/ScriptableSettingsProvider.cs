@@ -1,57 +1,93 @@
+using JakePerry.Collections;
+using System;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 namespace JakePerry.Unity
 {
     /// <summary>
-    /// A simple helper class for adding a <see cref="ScriptableObject"/> instance
+    /// A simple helper class for adding one or more <see cref="ScriptableObject"/> instances
     /// to the "Project Settings" window.
     /// </summary>
     internal sealed class ScriptableSettingsProvider : SettingsProvider
     {
-        private readonly ScriptableObject m_target;
+        private readonly ScriptableObject[] m_targets;
+        private readonly Editor[] m_editors;
 
-        private Editor m_editor;
         private bool m_keywordsInitialized;
 
         /// <summary>
         /// Create a new instance for providing settings in the Project Settings window.
         /// </summary>
-        /// <param name="target">
-        /// Target scriptable object.
-        /// </param>
-        /// <param name="path">
+        /// /// <param name="path">
         /// Settings display path, ie. "Project/MySettings"
         /// </param>
         /// <param name="isUserSettings">
         /// Indicates whether these settings apply to the current editor user
         /// or to the project.
         /// </param>
+        private ScriptableSettingsProvider(string path, bool isUserSettings)
+            : base(path, isUserSettings ? SettingsScope.User : SettingsScope.Project)
+        { }
+
+        /// <param name="target">
+        /// Target scriptable object.
+        /// </param>
+        /// <inheritdoc cref="ScriptableSettingsProvider(string, bool)"/>
         internal ScriptableSettingsProvider(
             ScriptableObject target,
             string path,
             bool isUserSettings)
-            : base(path, isUserSettings ? SettingsScope.User : SettingsScope.Project)
+            : this(path, isUserSettings)
         {
             UnityHelper.CheckArgument(target, nameof(target));
 
-            m_target = target;
+            m_targets = new ScriptableObject[1] { target };
+            m_editors = new Editor[1];
         }
 
-        public override void OnActivate(string searchContext, VisualElement rootElement)
+        /// <param name="targets">
+        /// Target scriptable objects.
+        /// </param>
+        /// <inheritdoc cref="ScriptableSettingsProvider(string, bool)"/>
+        internal ScriptableSettingsProvider(
+            ReadOnlyArray<ScriptableObject> targets,
+            string path,
+            bool isUserSettings)
+            : this(path, isUserSettings)
         {
-            m_editor = Editor.CreateEditor(m_target);
+            if (targets == default) throw new ArgumentNullException(nameof(targets));
 
-            base.OnActivate(searchContext, rootElement);
+            m_targets = targets.Copy();
+            m_editors = new Editor[m_targets.Length];
+        }
+
+        /// <param name="targets">
+        /// Target scriptable objects.
+        /// </param>
+        /// <inheritdoc cref="ScriptableSettingsProvider(string, bool)"/>
+        internal ScriptableSettingsProvider(
+            ReadOnlyList<ScriptableObject> targets,
+            string path,
+            bool isUserSettings)
+            : this(path, isUserSettings)
+        {
+            if (targets == default) throw new ArgumentNullException(nameof(targets));
+
+            m_targets = targets.ToArray();
+            m_editors = new Editor[m_targets.Length];
         }
 
         public override void OnDeactivate()
         {
-            if (m_editor != null)
+            for (int i = 0; i < m_editors.Length; ++i)
             {
-                UnityEngine.Object.DestroyImmediate(m_editor);
-                m_editor = null;
+                var editor = m_editors[i];
+                if (editor != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(editor);
+                    m_editors[i] = null;
+                }
             }
 
             base.OnDeactivate();
@@ -61,8 +97,22 @@ namespace JakePerry.Unity
         {
             if (!m_keywordsInitialized)
             {
-                var sObj = new SerializedObject(m_target);
-                keywords = GetSearchKeywordsFromSerializedObject(sObj);
+                if (m_targets.Length == 1)
+                {
+                    var sObj = new SerializedObject(m_targets[0]);
+                    keywords = GetSearchKeywordsFromSerializedObject(sObj);
+                }
+                else
+                {
+                    var list = new DistinctList<string>(StringComparer.Ordinal);
+                    foreach (var target in m_targets)
+                    {
+                        var sObj = new SerializedObject(target);
+                        list.AddRange(GetSearchKeywordsFromSerializedObject(sObj));
+                    }
+
+                    keywords = list;
+                }
 
                 m_keywordsInitialized = true;
             }
@@ -72,8 +122,6 @@ namespace JakePerry.Unity
 
         public override void OnGUI(string searchContext)
         {
-            if (m_target == null) return;
-
             var labelWidth = EditorGUIUtility.labelWidth;
 
             // Match other settings windows
@@ -84,9 +132,25 @@ namespace JakePerry.Unity
 
                 GUILayout.BeginVertical();
                 {
-                    GUILayout.Space(10);
+                    int count = m_targets.Length;
+                    for (int i = 0; i < count; ++i)
+                    {
+                        var target = m_targets[i];
+                        if (target == null) continue;
 
-                    m_editor.OnInspectorGUI();
+                        GUILayout.Space(14);
+
+                        var editor = m_editors[i];
+                        if (editor == null)
+                        {
+                            editor = Editor.CreateEditor(target);
+                            m_editors[i] = editor;
+
+                            m_keywordsInitialized = false;
+                        }
+
+                        editor.OnInspectorGUI();
+                    }
                 }
                 GUILayout.EndVertical();
             }

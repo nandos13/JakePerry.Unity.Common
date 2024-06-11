@@ -69,7 +69,7 @@ namespace JakePerry.Unity
                     _genericArgNameStyle = new GUIStyle(EditorStyles.miniLabel);
                 }
                 // Note: Hover color is applied every time in case the user changes the color.
-                _genericArgNameStyle.hover.textColor = EditorStylingConfig.TypeHoverColor;
+                _genericArgNameStyle.hover.textColor = SerializedTypesStyleConfig.TypeHoverColor;
                 return _genericArgNameStyle;
             }
         }
@@ -88,7 +88,7 @@ namespace JakePerry.Unity
                     _displayNameStyle.padding.right = 0;
                 }
                 // Note: Hover color is applied every time in case the user changes the color.
-                _displayNameStyle.hover.textColor = EditorStylingConfig.TypeHoverColor;
+                _displayNameStyle.hover.textColor = SerializedTypesStyleConfig.TypeHoverColor;
                 return _displayNameStyle;
             }
         }
@@ -627,7 +627,7 @@ namespace JakePerry.Unity
         {
             if (Event.current.type != EventType.Repaint) return;
 
-            var swatch = EditorStylingConfig.TypeDisplaySwatch.Colors;
+            var swatch = SerializedTypesStyleConfig.TypeDisplaySwatch.Colors;
             int colorCount = swatch.Length;
 
             foreach (var o in segments)
