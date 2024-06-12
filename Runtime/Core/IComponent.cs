@@ -15,7 +15,7 @@ namespace JakePerry.Unity
     /// Note: Implementing this interface stipulates that the object is a <see cref="Component"/>.
     /// Implementing on a non-<see cref="Component"/> class may cause unexpected behaviour.
     /// </remarks>
-    public interface IComponent
+    public interface IComponent : IUnityObject
     {
         public GameObject gameObject { get; }
 
