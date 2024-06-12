@@ -72,7 +72,10 @@ namespace JakePerry.Unity
             UnityEngine.Object newTarget;
             EditorGUI.BeginChangeCheck();
             {
-                newTarget = EditorGUI.ObjectField(contentRect, target, typeRestriction, allowSceneObjects: true);
+                using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+                {
+                    newTarget = EditorGUI.ObjectField(contentRect, target, typeRestriction, allowSceneObjects: true);
+                }
             }
             bool didChange = EditorGUI.EndChangeCheck();
 
