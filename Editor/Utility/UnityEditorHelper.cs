@@ -31,11 +31,6 @@ namespace JakePerry.Unity
                 }
             }
 
-            /// <summary>
-            /// Cache containing the <see cref="ValueMemberInfo"/> resolved from a given
-            /// declaring type &amp; member name. Implemented for performance.
-            /// </summary>
-            private static readonly Dictionary<(Type, string), ValueMemberInfo> _memberCache = new();
             private static readonly List<(int offset, int count)> _spans = new();
 
             private readonly SerializedObject m_rootObj;
@@ -51,66 +46,33 @@ namespace JakePerry.Unity
                 m_captureStack = ResolveStack(m_propertyPath);
             }
 
-            private static bool TryGetCachedMember(Type type, ReadOnlySpan<char> memberName, out ValueMemberInfo cached)
+            private static ValueMemberInfo GetMemberFromType(Type type, Substring memberName)
             {
-                foreach (var pair in _memberCache)
-                {
-                    var tuple = pair.Key;
-                    if (tuple.Item1 == type &&
-                        memberName.Equals(tuple.Item2, StringComparison.Ordinal))
-                    {
-                        cached = pair.Value;
-                        return true;
-                    }
-                }
-
-                cached = default;
-                return false;
-            }
-
-            private static ValueMemberInfo GetMemberFromType(Type type, ReadOnlySpan<char> memberName)
-            {
-                const MemberTypes kMemberFlags = MemberTypes.Field | MemberTypes.Property;
                 const BindingFlags kBindingFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
                 const BindingFlags kBaseTypeBindingFlags = BindingFlags.NonPublic | BindingFlags.Instance;
 
-                if (TryGetCachedMember(type, memberName, out ValueMemberInfo cached))
-                {
-                    return cached;
-                }
-
                 var originalType = type;
 
-                var nameStr = memberName.ToString();
-                var members = type.GetMember(nameStr, kMemberFlags, kBindingFlags);
+                var member = ReflectionEx.GetFieldOrProperty(type, memberName, kBindingFlags, false);
 
-                // If no members are found, search up the type hierarchy for a matching private member
-                while ((members?.Length ?? 0) == 0)
+                // If no member is found, search up the type hierarchy for a matching private member
+                while (member.IsNull)
                 {
                     type = type.BaseType;
 
                     if (type is null)
                         break;
 
-                    members = type.GetMember(nameStr, kMemberFlags, kBaseTypeBindingFlags);
+                    member = ReflectionEx.GetFieldOrProperty(type, memberName, kBaseTypeBindingFlags, false);
                 }
 
-                // Throw an exception if the member is not found (should never happen)
-                if ((members?.Length ?? 0) == 0)
+                // Throw an exception if the member is not found
+                if (member.IsNull)
                 {
-                    throw new Exception($"Failed to find the serialized member with name '{nameStr}' from type {originalType} via reflection.");
+                    throw new Exception($"Failed to find the serialized member with name '{memberName}' from type {originalType} via reflection.");
                 }
 
-                // Not sure if this could ever happen if we're only specifying the Field | Property flags, but detect this just in case...
-                if (members.Length != 1)
-                {
-                    throw new NotImplementedException("More than one member was found. This code will require some changes to discern the correct member.");
-                }
-
-                var m = ValueMemberInfo.FromMemberInfo(members[0]);
-                _memberCache[(originalType, nameStr)] = m;
-
-                return m;
+                return member;
             }
 
             /// <summary>
@@ -174,13 +136,13 @@ namespace JakePerry.Unity
 
                         var target = nextTarget;
 
-                        var memberName = path.AsSpan(segmentOffset, segmentCount);
+                        var memberName = new Substring(path, segmentOffset, segmentCount);
 
                         // Special case: Handle cases where we're attempting to access items in an array or List<T>
                         if (memberName.StartsWith(kArrayExpression, StringComparison.Ordinal))
                         {
-                            var numberStr = memberName.Slice(kArrayExpression.Length, memberName.Length - 1 - kArrayExpression.Length);
-                            var index = int.Parse(numberStr, style: NumberStyles.Integer);
+                            var numberStr = memberName.GetSubstring(kArrayExpression.Length, memberName.Length - 1 - kArrayExpression.Length);
+                            var index = int.Parse(numberStr.AsSpan(), style: NumberStyles.Integer);
 
                             Debug.Assert(index > -1);
 
@@ -328,42 +290,16 @@ namespace JakePerry.Unity
             return TryGetProjectAsset<UnityEngine.Object>(guid, out asset);
         }
 
-        /// <inheritdoc cref="ResourcesEx.IsResourcesPath(string)"/>
-        public static bool IsResourcesPath(string path)
-        {
-            return ResourcesEx.IsResourcesPath(path);
-        }
-
-        /// <summary>
-        /// Attempts to find the Resources-relative path for an arbitrary asset located
-        /// at the given path within the Asset Database.
-        /// </summary>
-        /// <param name="path">
-        /// A file path relative to the project.
-        /// </param>
-        /// <param name="resourcePath">
-        /// The corresponding load path relative to the Resources folder of the asset,
-        /// or an empty string if it could not be found.
-        /// </param>
-        /// <returns>
-        /// <see langword="true"/> if the asset was found and exists within a Resources
-        /// folder; otherwise, <see langword="false"/>.
-        /// </returns>
-        public static bool TryGetResourcesPath(string path, out string resourcePath)
-        {
-            return ResourcesEx.TryGetResourcesPath(path, out resourcePath);
-        }
-
         /// <summary>
         /// Attempts to find the Resources-relative path for an asset with the given guid.
         /// </summary>
         /// <param name="guid">Guid of the resource asset.</param>
-        /// <inheritdoc cref="TryGetResourcesPath(string, out string)"/>
-        public static bool TryGetResourcesPath(SerializeGuid guid, out string resourcePath)
+        /// <inheritdoc cref="ResourcesEx.TryGetResourcesPath(string, out string)"/>
+        public static bool TryGetResourcesPathFromAssetGuid(SerializeGuid guid, out string resourcePath)
         {
             resourcePath = string.Empty;
             return TryGetAssetPath(guid, out string assetPath)
-                && TryGetResourcesPath(assetPath, out resourcePath);
+                && ResourcesEx.TryGetResourcesPath(assetPath, out resourcePath);
         }
 
         public static object GetSerializedValue(SerializedProperty property)

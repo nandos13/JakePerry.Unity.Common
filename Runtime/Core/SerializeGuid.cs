@@ -136,7 +136,7 @@ namespace JakePerry.Unity
             return new SerializeGuid(guid);
         }
 
-        public static implicit operator string(SerializeGuid guid)
+        public static explicit operator string(SerializeGuid guid)
         {
             return guid.UnityGuidString;
         }

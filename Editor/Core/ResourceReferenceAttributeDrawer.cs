@@ -31,7 +31,7 @@ namespace JakePerry.Unity
         private static void CopyResourcesPath(object o)
         {
             var guid = (SerializeGuid)o;
-            if (UnityEditorHelper.TryGetResourcesPath(guid, out string resourcePath))
+            if (UnityEditorHelper.TryGetResourcesPathFromAssetGuid(guid, out string resourcePath))
             {
                 GUIUtility.systemCopyBuffer = resourcePath;
             }
@@ -46,7 +46,7 @@ namespace JakePerry.Unity
         private static void AddToManifest(object o)
         {
             var guid = (SerializeGuid)o;
-            if (UnityEditorHelper.TryGetResourcesPath(guid, out string resourcePath))
+            if (UnityEditorHelper.TryGetResourcesPathFromAssetGuid(guid, out string resourcePath))
             {
                 var manifest = ResourceGuidManifestEditorUtil.GetOrCreateManifestAsset();
 
@@ -60,7 +60,7 @@ namespace JakePerry.Unity
         private void ShowContextMenu(SerializeGuid guid, SerializedProperty property)
         {
             bool gotAssetPath = UnityEditorHelper.TryGetAssetPath(guid, out string assetPath);
-            bool isResource = UnityEditorHelper.TryGetResourcesPath(assetPath, out string resourcePath);
+            bool isResource = ResourcesEx.TryGetResourcesPath(assetPath, out string resourcePath);
 
             var menu = new GenericMenu();
 
@@ -140,7 +140,7 @@ namespace JakePerry.Unity
                     }
                 }
                 // Check the asset is in a Resources directory
-                else if (!UnityEditorHelper.TryGetResourcesPath(assetPath, out resourcePath))
+                else if (!ResourcesEx.TryGetResourcesPath(assetPath, out resourcePath))
                 {
                     var err = "Asset is not a Resource.\nFor debug info, ctrl + shift + click.";
                     if (ShowErrorContent(ref position, err))
@@ -192,7 +192,7 @@ namespace JakePerry.Unity
             assetPath = AssetDatabase.GetAssetPath(newObj);
             if (!string.IsNullOrEmpty(assetPath))
             {
-                if (UnityEditorHelper.IsResourcesPath(assetPath))
+                if (ResourcesEx.IsResourcesPath(assetPath))
                 {
                     guid = new SerializeGuid(AssetDatabase.AssetPathToGUID(assetPath));
                     return true;

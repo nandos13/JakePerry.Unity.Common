@@ -35,7 +35,7 @@ namespace JakePerry.Unity
 
             foreach (var path in AssetDatabase.GetAllAssetPaths())
             {
-                if (UnityEditorHelper.TryGetResourcesPath(path, out string resourcePath))
+                if (ResourcesEx.TryGetResourcesPath(path, out string resourcePath))
                 {
                     var guid = Guid.ParseExact(AssetDatabase.GUIDFromAssetPath(path).ToString(), "N");
                     pairs.Add(((SerializeGuid)guid, resourcePath));
