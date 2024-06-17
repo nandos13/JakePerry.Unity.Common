@@ -119,7 +119,7 @@ namespace JakePerry.Unity
 
                 // TODO: Remove this later. This approach only works for generics
                 // with one parameter... Gonna need something a lot more complex :) :) :)
-                try { m_genericParameter.DeclaringType.MakeGenericType(t); }
+                try { ReflectionEx.MakeGenericType(m_genericParameter.DeclaringType, new(t)); }
                 catch { return true; }
                 return false;
             }

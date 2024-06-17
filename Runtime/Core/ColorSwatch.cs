@@ -1,16 +1,16 @@
 using JakePerry.Collections;
-using System;
 using UnityEngine;
 
 namespace JakePerry.Unity
 {
-    // TODO: Custom drawer for this type.
-    [Serializable]
-    public struct ColorSwatch
+    [CreateAssetMenu(fileName = "ColorSwatch", menuName = "JakePerry/ColorSwatch")]
+    public sealed class ColorSwatch : ScriptableObject, IValueFromUnityObject<Color24[]>
     {
         [SerializeField]
         private Color24[] m_colors;
 
         public ReadOnlyArray<Color24> Colors => m_colors;
+
+        Color24[] IValueFromUnityObject<Color24[]>.Value => m_colors;
     }
 }

@@ -7,6 +7,37 @@ namespace JakePerry.Unity
     public static class UnityHelper
     {
         /// <summary>
+        /// Determines whether <paramref name="obj"/> is unassigned - that is,
+        /// if it is a <see langword="null"/> reference.
+        /// This method also checks for Unity's "fake" objects in editor (see details below).
+        /// <para/>
+        /// Any 'null' references to an <see cref="UnityEngine.Object"/> or any of its child
+        /// classes that are deserialized while running in the editor are assigned
+        /// a fake object instance. This fake object allows Unity to alert the user if they attempt to
+        /// access the referenced object with this undoubtedly familiar message:
+        /// <para/>
+        /// <c>The variable *Variable* of *Script* has not been assigned. You probably need
+        /// to assign the *Variable* variable of the *Script* script in the inspector.</c>
+        /// </summary>
+        /// <param name="obj">
+        /// The object reference to be checked.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> if the object is unassigned, per the summary above;
+        /// Otherwise, <see langword="false"/>.
+        /// </returns>
+        public static bool IsUnassigned(UnityEngine.Object obj)
+        {
+            if (obj is null) return true;
+
+#if UNITY_EDITOR
+            if (obj.GetInstanceID() == 0) return true;
+#endif // UNITY_EDITOR
+
+            return false;
+        }
+
+        /// <summary>
         /// Check that an argument is not null or destroyed.
         /// </summary>
         /// <param name="obj">

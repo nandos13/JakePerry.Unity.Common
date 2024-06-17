@@ -7,18 +7,6 @@ namespace JakePerry.Unity
     [CustomPropertyDrawer(typeof(InspectableInterface<>))]
     public class InspectableInterfaceDrawer : PropertyDrawer
     {
-        private static Type GetGenericType(ValueMemberInfo member)
-        {
-            Type memberType = member.MemberType;
-
-            if (memberType.IsGenericType)
-            {
-                return memberType.GenericTypeArguments[0];
-            }
-
-            throw new InvalidOperationException("The resolved MemberInfo's field or property type is not a generic type.");
-        }
-
         private static bool IsIncorrectType(UnityEngine.Object obj, Type typeRestriction)
         {
             return obj != null && !typeRestriction.IsAssignableFrom(obj.GetType());
@@ -53,10 +41,10 @@ namespace JakePerry.Unity
             var serializedMember = UnityEditorHelper.GetSerializedMember(property);
 
             // Find the generic argument which indicates the desired interface type
-            var typeRestriction = GetGenericType(serializedMember);
+            var typeRestriction = serializedMember.MemberType.GenericTypeArguments[0];
 
             // Get the property for the underlying UnityEngine.Object reference field
-            var targetProperty = property.FindPropertyRelative("m_targetObject");
+            var targetProperty = InspectableInterface.EditorUtil.GetTargetObjectProperty(property);
 
             // Draw the prefix label & get remaining rect for content
             var contentRect = EditorGUI.PrefixLabel(position, label);

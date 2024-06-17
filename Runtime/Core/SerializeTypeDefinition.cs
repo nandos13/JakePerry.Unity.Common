@@ -115,7 +115,7 @@ namespace JakePerry.Unity
                     genericArguments[i] = arg;
                 }
 
-                t = t.MakeGenericType(genericArguments);
+                t = ReflectionEx.MakeGenericType(t, new(genericArguments));
             }
 
             return t;

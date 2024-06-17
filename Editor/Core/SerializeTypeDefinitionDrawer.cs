@@ -627,7 +627,7 @@ namespace JakePerry.Unity
         {
             if (Event.current.type != EventType.Repaint) return;
 
-            var swatch = SerializedTypesStyleConfig.TypeDisplaySwatch.Colors;
+            var swatch = SerializedTypesStyleConfig.TypeDisplaySwatch;
             int colorCount = swatch.Length;
 
             foreach (var o in segments)
