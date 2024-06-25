@@ -10,7 +10,7 @@ using static JakePerry.Unity.TypeSerializationUtility;
 namespace JakePerry.Unity
 {
     // TODO: Documentation pass
-    [RequiresConstantRepaint]
+    [RequiresConstantRepaint(If = nameof(IsMouseOverTotalRect))]
     [CustomPropertyDrawer(typeof(SerializeTypeDefinition))]
     public sealed class SerializeTypeDefinitionDrawer : PropertyDrawer
     {
@@ -94,6 +94,15 @@ namespace JakePerry.Unity
         }
 
         private static GUIStyle GroupBox => _groupBox ??= new GUIStyle("GroupBox");
+
+        private bool IsMouseOverTotalRect()
+        {
+            // TODO: Implement this properly so the drawer only forces repaint if the mouse
+            // is over the rect of the property.
+            // Remember that this PropertyDrawer may draw many properties in one editor update,
+            // so we may need to cache multiple rects somewhere.
+            return true;
+        }
 
         private static Type[] GetGenericArgumentsAndCache(Type t)
         {

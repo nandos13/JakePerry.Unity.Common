@@ -1,14 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
 using UnityEditor.Callbacks;
+using UnityEngine;
 
 namespace JakePerry.Unity
 {
-    // TODO: Consider an attribute parameter to specify a bool method/property for whether the property
-    // actually needs to be repainted. ie. the serializetypedefinition drawer only needs to constant
-    // repaint when the mouse is over the total rect (or maybe a frame after it leaves too).
-
     /// <summary>
     /// Utility class that allows constant repainting of a <see cref="PropertyDrawer"/>
     /// or <see cref="EditorWindow"/> type.
@@ -17,33 +15,80 @@ namespace JakePerry.Unity
     {
         private const BindingFlags kFlags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
-        private static Type GenericInspectorType =>
-            ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.GenericInspector");
-
-        private static Type ScriptAttributeUtilityType =>
-            ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.ScriptAttributeUtility");
-
-        private static Type PropertyHandlerType =>
-            ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.PropertyHandler");
-
-        private static MethodInfo GetHandlerMethod =>
-            ReflectionEx.GetMethod(ScriptAttributeUtilityType, "GetHandler", kFlags, new ParamsArray<Type>(typeof(SerializedProperty)));
-
-        private static PropertyInfo PropertyDrawerProperty =>
-            ReflectionEx.GetProperty(PropertyHandlerType, "propertyDrawer", kFlags);
-
-        private static TypeCache.TypeCollection _attributedTypes;
+        private static readonly Dictionary<Type, MethodInfo> _attributeLookup = new();
 
         private static double _lastRepaintTime;
+
+        private static bool TryGetPropertyDrawer(SerializedProperty property, out object propertyDrawer)
+        {
+            propertyDrawer = null;
+
+            var scriptAttributeUtilityType = ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.ScriptAttributeUtility");
+            var getHandlerMethod = ReflectionEx.GetMethod(scriptAttributeUtilityType, "GetHandler", kFlags, new ParamsArray<Type>(typeof(SerializedProperty)));
+
+            var args = ReflectionEx.RentArrayWithArguments(property);
+            var handle = getHandlerMethod.Invoke(null, args);
+            ReflectionEx.ReturnArray(args);
+
+            if (handle is not null)
+            {
+                var propertyHandlerType = ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.PropertyHandler");
+                var propertyDrawerProperty = ReflectionEx.GetProperty(propertyHandlerType, "propertyDrawer", kFlags);
+
+                propertyDrawer = propertyDrawerProperty.GetValue(handle);
+            }
+            return propertyDrawer is not null;
+        }
+
+        private static bool AnyPropertyDrawerWantsRepaint(Editor editor)
+        {
+            var sObj = editor.serializedObject;
+            sObj.UpdateIfRequiredOrScript();
+
+            var iterator = sObj.GetIterator();
+            bool enterChildren = true;
+            while (iterator.NextVisible(enterChildren))
+            {
+                enterChildren = false;
+
+                if (!TryGetPropertyDrawer(iterator, out object propertyDrawer))
+                {
+                    continue;
+                }
+
+                if (_attributeLookup.TryGetValue(propertyDrawer.GetType(), out var method))
+                {
+                    bool wantsRepaint = true;
+                    if (method is not null)
+                    {
+                        if (method.GetParameters().Length > 0)
+                        {
+                            var args = ReflectionEx.RentArrayWithArguments(sObj);
+                            wantsRepaint = (bool)method.Invoke(propertyDrawer, args);
+                            ReflectionEx.ReturnArray(args);
+                        }
+                        else
+                        {
+                            wantsRepaint = (bool)method.Invoke(propertyDrawer, Array.Empty<object>());
+                        }
+                    }
+
+                    if (wantsRepaint) return true;
+                }
+            }
+
+            return false;
+        }
 
         private static void EditorUpdate()
         {
             const double kDelta = 0.032999999821186066;
 
-            // This mimics behaviour in PropertyEditor.Update, seemingly
-            // to prevent performance issues from repainting too frequently.
-            // Honestly I don't know the significance of the 'kDelta' value,
-            // but if it works for Unity, it'll be fine here.
+            /* This mimics behaviour in PropertyEditor.Update, seemingly
+             * to prevent performance issues from repainting too frequently.
+             * Honestly I don't know the significance of the 'kDelta' value,
+             * but if it works for Unity, it'll be fine here.
+             */
             var time = EditorApplication.timeSinceStartup;
             if (_lastRepaintTime + kDelta >= time)
             {
@@ -51,55 +96,82 @@ namespace JakePerry.Unity
             }
             _lastRepaintTime = time;
 
-            var args = ReflectionEx.RentArray(1);
+            var genericInspectorType = ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.GenericInspector");
 
             foreach (var editor in ActiveEditorTracker.sharedTracker.activeEditors)
-            {
-                if (GenericInspectorType.IsAssignableFrom(editor.GetType()))
+                if (genericInspectorType.IsAssignableFrom(editor.GetType()) &&
+                    AnyPropertyDrawerWantsRepaint(editor))
                 {
-                    var sObj = editor.serializedObject;
-                    sObj.UpdateIfRequiredOrScript();
-
-                    var iterator = sObj.GetIterator();
-                    bool enterChildren = true;
-                    while (iterator.NextVisible(enterChildren))
-                    {
-                        enterChildren = false;
-
-                        args[0] = iterator;
-
-                        var handle = GetHandlerMethod.Invoke(null, args);
-                        if (handle is null) continue;
-
-                        var propertyDrawer = PropertyDrawerProperty.GetValue(handle);
-                        if (propertyDrawer is null) continue;
-
-                        if (_attributedTypes.Contains(propertyDrawer.GetType()))
-                        {
-                            editor.Repaint();
-                            break;
-                        }
-                    }
+                    editor.Repaint();
                 }
-            }
 
             var focusWindow = EditorWindow.focusedWindow;
-            if (focusWindow != null && _attributedTypes.Contains(focusWindow.GetType()))
+            if (focusWindow != null)
             {
-                focusWindow.Repaint();
-            }
+                bool wantsRepaint = false;
+                if (_attributeLookup.TryGetValue(focusWindow.GetType(), out var method))
+                {
+                    if (method is null)
+                    {
+                        wantsRepaint = true;
+                    }
+                    else
+                    {
+                        wantsRepaint = (bool)method.Invoke(focusWindow, Array.Empty<object>());
+                    }
+                }
 
-            ReflectionEx.ReturnArray(args);
+                if (wantsRepaint)
+                {
+                    focusWindow.Repaint();
+                }
+            }
         }
 
         [InitializeOnLoadMethod]
         [DidReloadScripts]
         private static void Initialize()
         {
+            const BindingFlags kMethodFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
             EditorApplication.update -= EditorUpdate;
             EditorApplication.update += EditorUpdate;
 
-            _attributedTypes = TypeCache.GetTypesWithAttribute<RequiresConstantRepaintAttribute>();
+            var dict = _attributeLookup;
+            dict.Clear();
+
+            foreach (var t in TypeCache.GetTypesWithAttribute<RequiresConstantRepaintAttribute>())
+            {
+                var attr = t.GetCustomAttribute<RequiresConstantRepaintAttribute>();
+                var methodName = attr.If;
+
+                MethodInfo method = null;
+                if (!string.IsNullOrEmpty(methodName))
+                {
+                    bool isPropDrawer = typeof(PropertyDrawer).IsAssignableFrom(t);
+                    if (isPropDrawer || typeof(EditorWindow).IsAssignableFrom(t))
+                    {
+                        method = ReflectionEx.GetMethod(t, methodName, kMethodFlags, throwOnError: false);
+
+                        if (isPropDrawer && method is null)
+                        {
+                            var types = new ParamsArray<Type>(typeof(SerializedObject));
+                            method = ReflectionEx.GetMethod(t, methodName, kMethodFlags, types, throwOnError: false);
+                        }
+
+                        if (method is null || method.ReturnType != typeof(bool))
+                        {
+                            Debug.LogError(
+                                "Unable to find method specified by the attribute on type " +
+                                t.FullName +
+                                ". Please refer to the documentation on the RequiresConstantRepaintAttribute.If " +
+                                "property and check the method signature.");
+                        }
+                    }
+                }
+
+                dict[t] = method;
+            }
         }
     }
 }
