@@ -1,4 +1,4 @@
-namespace JakePerry.Unity.Events
+namespace JakePerry.Unity
 {
     /// <summary>
     /// An enumeration of possible error handling policies.
