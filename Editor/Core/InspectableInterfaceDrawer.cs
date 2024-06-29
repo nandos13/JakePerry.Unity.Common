@@ -38,7 +38,7 @@ namespace JakePerry.Unity
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
             // Attain a MemberInfo to the serialized property via reflection
-            var serializedMember = UnityEditorHelper.GetSerializedMember(property);
+            var serializedMember = PropertyPathWalker.GetFieldOrProperty(property);
 
             // Find the generic argument which indicates the desired interface type
             var typeRestriction = serializedMember.MemberType.GenericTypeArguments[0];

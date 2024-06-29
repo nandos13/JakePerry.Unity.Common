@@ -216,7 +216,7 @@ namespace JakePerry.Unity
 
             using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
             {
-                var member = UnityEditorHelper.GetSerializedMember(property);
+                var member = PropertyPathWalker.GetFieldOrProperty(property);
 
                 if (member.MemberType != typeof(SerializeGuid) &&
                     member.MemberType != typeof(SerializeGuid[]) &&

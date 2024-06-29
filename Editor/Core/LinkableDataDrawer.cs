@@ -27,7 +27,7 @@ namespace JakePerry.Unity
             {
                 height += Spacing + LineHeight;
 
-                var serializedMember = UnityEditorHelper.GetSerializedMember(property);
+                var serializedMember = PropertyPathWalker.GetFieldOrProperty(property);
                 var genericArg = serializedMember.MemberType.GenericTypeArguments[0];
 
                 var sourceProp = property.FindPropertyRelative("m_source");
@@ -70,7 +70,7 @@ namespace JakePerry.Unity
             if (linkedProp.boolValue)
             {
                 // Attain a MemberInfo to the serialized property via reflection
-                var serializedMember = UnityEditorHelper.GetSerializedMember(property);
+                var serializedMember = PropertyPathWalker.GetFieldOrProperty(property);
 
                 // Find the generic argument which indicates the desired data type
                 var genericArg = serializedMember.MemberType.GenericTypeArguments[0];

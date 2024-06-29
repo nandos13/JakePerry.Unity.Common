@@ -142,8 +142,7 @@ namespace JakePerry.Unity.Events
             var path = property.propertyPath;
             if (!_memberCache.TryGetValue(path, out var member))
             {
-                var resolver = new UnityEditorHelper.SerializedPropertyResolver(property);
-                member = resolver.GetSerializedMember();
+                member = PropertyPathWalker.GetFieldOrProperty(property);
                 _memberCache[path] = member;
             }
             return member;

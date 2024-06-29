@@ -121,7 +121,7 @@ namespace JakePerry.Unity
 
             if (!_allowUnboundGenericsLookup.TryGetValue(key, out bool allowUnbound))
             {
-                var member = UnityEditorHelper.GetSerializedMember(property);
+                var member = PropertyPathWalker.GetFieldOrProperty(property);
                 var hasDisallowAttribute = member.member.GetCustomAttribute<DisallowUnboundGenericTypeAttribute>() != null;
 
                 _allowUnboundGenericsLookup[key] = allowUnbound = !hasDisallowAttribute;
