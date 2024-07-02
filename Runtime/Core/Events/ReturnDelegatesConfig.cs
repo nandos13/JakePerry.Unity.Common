@@ -5,14 +5,16 @@ namespace JakePerry.Unity.Events
     [RuntimeSettingsPath("Project/JakePerry/Return Delegates")]
     internal sealed class ReturnDelegatesConfig : RuntimeSettingsBase
     {
+        [Header("Error Policies")]
+
         [SerializeField]
         private bool m_errorLoggingEnabled;
 
         [SerializeField]
-        private ErrorHandlingPolicy m_targetDestroyedPolicy;
+        private ErrorHandlingPolicy m_methodResolutionFailurePolicy;
 
         [SerializeField]
-        private ErrorHandlingPolicy m_failToResolveMethodPolicy;
+        private ErrorHandlingPolicy m_invocationFailurePolicy;
 
         private static ReturnDelegatesConfig Cfg => GetSettingsAndCache<ReturnDelegatesConfig>();
 
@@ -24,10 +26,10 @@ namespace JakePerry.Unity.Events
 
         internal static bool ErrorLoggingEnabled => Cfg.m_errorLoggingEnabled;
 
-        internal static ErrorHandlingPolicy TargetDestroyedPolicy =>
-            GetPolicy(Cfg.m_targetDestroyedPolicy, ErrorHandlingPolicy.LogError);
+        internal static ErrorHandlingPolicy InvocationFailedPolicy =>
+            GetPolicy(Cfg.m_invocationFailurePolicy, ErrorHandlingPolicy.LogError);
 
         internal static ErrorHandlingPolicy FailedToResolveMethodPolicy =>
-            GetPolicy(Cfg.m_failToResolveMethodPolicy, ErrorHandlingPolicy.LogError);
+            GetPolicy(Cfg.m_methodResolutionFailurePolicy, ErrorHandlingPolicy.LogError);
     }
 }

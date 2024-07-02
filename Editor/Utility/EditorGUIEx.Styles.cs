@@ -29,7 +29,9 @@ namespace JakePerry.Unity
 
                 public static GUIStyle DockTitleBarStyle => GetStyleFromField("dockHeader");
             }
-            
+
+            public static readonly GUIStyle LabelRightAlign = new GUIStyle(EditorStyles.label) { alignment = TextAnchor.MiddleRight };
+
             /// <summary>
             /// Returns the internal 'CurrentStyles' instance.
             /// </summary>

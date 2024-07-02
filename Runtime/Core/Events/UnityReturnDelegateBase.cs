@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using UnityEngine;
 
 namespace JakePerry.Unity.Events
@@ -40,7 +41,7 @@ namespace JakePerry.Unity.Events
         private InvocationArgument[] m_arguments;
 
         [SerializeField]
-        private byte m_targetDestroyedPolicy;
+        private byte m_invocationFailedPolicy;
 
         [SerializeField]
         private byte m_failToResolveMethodPolicy;
@@ -51,13 +52,13 @@ namespace JakePerry.Unity.Events
         internal protected abstract Type ReturnType { get; }
 
         /// <summary>
-        /// Indicates the error handling policy that should be enacted when the invocation
-        /// target is a destroyed <see cref="UnityEngine.Object"/>.
+        /// Indicates the error handling policy that should be enacted
+        /// when invocation fails due to an exception.
         /// </summary>
-        public ErrorHandlingPolicy TargetDestroyedPolicy
+        public ErrorHandlingPolicy InvocationFailedPolicy
         {
-            get => (ErrorHandlingPolicy)m_targetDestroyedPolicy;
-            set => m_targetDestroyedPolicy = ReturnDelegatesUtility.ErrorPolicyToByte(value);
+            get => (ErrorHandlingPolicy)m_invocationFailedPolicy;
+            set => m_invocationFailedPolicy = ReturnDelegatesUtility.ErrorPolicyToByte(value);
         }
 
         /// <summary>
@@ -239,32 +240,36 @@ namespace JakePerry.Unity.Events
             return result;
         }
 
-        /// <summary>
-        /// Checks if invocation is allowed &amp; handles logging an error or throwing an exception
-        /// in accordance with the current error handling policy when it is not allowed..
-        /// </summary>
-        private static bool VerifyInvokeIsAllowed(IInvocableCall call, ErrorHandlingPolicy policy)
+        protected static void HandleInvocationException(Exception exception, ErrorHandlingPolicy policy)
         {
-            bool allowed = call.AllowInvoke;
-            if (!allowed)
-            {
-                if (policy == ErrorHandlingPolicy.Default)
-                {
-                    policy = ReturnDelegatesConfig.TargetDestroyedPolicy;
-                }
+            if (exception is null) return;
 
-                // TODO: Augment error & exception with some useful data. Call site, target object id, method name perhaps...
-                if (policy == ErrorHandlingPolicy.LogError)
-                {
-                    ReturnDelegatesUtility.LogError("Target object is destroyed! Invocation will not proceed and a default value will be returned.");
-                }
-                else if (policy == ErrorHandlingPolicy.ThrowException)
-                {
-                    throw new InvocationTargetDestroyedException();
-                }
+            if (policy == ErrorHandlingPolicy.Default)
+            {
+                policy = ReturnDelegatesConfig.InvocationFailedPolicy;
             }
 
-            return allowed;
+            if (policy == ErrorHandlingPolicy.LogError)
+            {
+                // Special case: better logs for destroyed invocation target
+                if (exception is InvocationTargetDestroyedException)
+                {
+                    ReturnDelegatesUtility.LogError("Target object is destroyed! " +
+                        "Invocation will not proceed and a default value will be returned.");
+                }
+                else
+                {
+                    ReturnDelegatesUtility.LogError($"Exception of type {exception.GetType()} occurred during invocation " +
+                        $"(see the following exception log for details). " +
+                        "Invocation will not proceed and a default value will be returned.");
+
+                    Debug.LogException(exception);
+                }
+            }
+            else if (policy == ErrorHandlingPolicy.ThrowException)
+            {
+                ExceptionDispatchInfo.Throw(exception);
+            }
         }
 
         private void DirtyRuntimeCall()
@@ -383,18 +388,7 @@ namespace JakePerry.Unity.Events
 
             ResolveRuntimeCallIfDirty();
 
-            call = m_call;
-
-            if (call is not null)
-            {
-                var policy = this.TargetDestroyedPolicy;
-                if (!VerifyInvokeIsAllowed(call, policy))
-                {
-                    call = null;
-                }
-            }
-
-            return call;
+            return m_call;
         }
 
         void ISerializationCallbackReceiver.OnBeforeSerialize() => DirtyRuntimeCall();

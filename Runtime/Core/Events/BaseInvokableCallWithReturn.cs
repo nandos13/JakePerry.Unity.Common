@@ -17,13 +17,6 @@ namespace JakePerry.Unity.Events
             m_func = (TFunc)Delegate.CreateDelegate(typeof(TFunc), target, method);
         }
 
-        // TODO: Double check what this was used for in Unity's code, it may not be needed.
-        internal bool Match(object target, MethodInfo method)
-        {
-            var func = m_func;
-            return func.Target == target && func.Method.Equals(method);
-        }
-
         protected static void ThrowOnInvalidArgument<T>(object arg, int index)
         {
             if (arg is not T)
@@ -41,42 +34,30 @@ namespace JakePerry.Unity.Events
         }
     }
 
-    internal sealed class InvokableCallWithReturn<TResult> : BaseInvokableCallWithReturn<UnityFunc<TResult>>
+    internal sealed class InvokableCallWithReturn<TResult> : BaseInvokableCallWithReturn<Func<TResult>>
     {
         internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
-        
+
         internal TResult Invoke()
         {
-            if (AllowInvoke)
-            {
-                return Func.Invoke();
-            }
-            return default;
+            return Func.Invoke();
         }
 
         protected override object Invoke_Impl(object[] args)
         {
             if (args.Length != 0) throw new ArgumentException("Expected array of length 0.", nameof(args));
 
-            if (AllowInvoke)
-            {
-                return (object)Func.Invoke();
-            }
-            return null;
+            return (object)Func.Invoke();
         }
     }
 
-    internal sealed class InvokableCallWithReturn<T0, TResult> : BaseInvokableCallWithReturn<UnityFunc<T0, TResult>>
+    internal sealed class InvokableCallWithReturn<T0, TResult> : BaseInvokableCallWithReturn<Func<T0, TResult>>
     {
         internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
 
         internal TResult Invoke(T0 arg0)
         {
-            if (AllowInvoke)
-            {
-                return Func.Invoke(arg0);
-            }
-            return default;
+            return Func.Invoke(arg0);
         }
 
         protected override object Invoke_Impl(object[] args)
@@ -85,25 +66,17 @@ namespace JakePerry.Unity.Events
 
             ThrowOnInvalidArgument<T0>(args[0], 0);
 
-            if (AllowInvoke)
-            {
-                return (object)Func.Invoke((T0)args[0]);
-            }
-            return null;
+            return (object)Func.Invoke((T0)args[0]);
         }
     }
 
-    internal sealed class InvokableCallWithReturn<T0, T1, TResult> : BaseInvokableCallWithReturn<UnityFunc<T0, T1, TResult>>
+    internal sealed class InvokableCallWithReturn<T0, T1, TResult> : BaseInvokableCallWithReturn<Func<T0, T1, TResult>>
     {
         internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
 
         internal TResult Invoke(T0 arg0, T1 arg1)
         {
-            if (AllowInvoke)
-            {
-                return Func.Invoke(arg0, arg1);
-            }
-            return default;
+            return Func.Invoke(arg0, arg1);
         }
 
         protected override object Invoke_Impl(object[] args)
@@ -113,25 +86,17 @@ namespace JakePerry.Unity.Events
             ThrowOnInvalidArgument<T0>(args[0], 0);
             ThrowOnInvalidArgument<T1>(args[1], 1);
 
-            if (AllowInvoke)
-            {
-                return (object)Func.Invoke((T0)args[0], (T1)args[1]);
-            }
-            return null;
+            return (object)Func.Invoke((T0)args[0], (T1)args[1]);
         }
     }
 
-    internal sealed class InvokableCallWithReturn<T0, T1, T2, TResult> : BaseInvokableCallWithReturn<UnityFunc<T0, T1, T2, TResult>>
+    internal sealed class InvokableCallWithReturn<T0, T1, T2, TResult> : BaseInvokableCallWithReturn<Func<T0, T1, T2, TResult>>
     {
         internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
 
         internal TResult Invoke(T0 arg0, T1 arg1, T2 arg2)
         {
-            if (AllowInvoke)
-            {
-                return Func.Invoke(arg0, arg1, arg2);
-            }
-            return default;
+            return Func.Invoke(arg0, arg1, arg2);
         }
 
         protected override object Invoke_Impl(object[] args)
@@ -142,25 +107,17 @@ namespace JakePerry.Unity.Events
             ThrowOnInvalidArgument<T1>(args[1], 1);
             ThrowOnInvalidArgument<T2>(args[2], 2);
 
-            if (AllowInvoke)
-            {
-                return (object)Func.Invoke((T0)args[0], (T1)args[1], (T2)args[2]);
-            }
-            return null;
+            return (object)Func.Invoke((T0)args[0], (T1)args[1], (T2)args[2]);
         }
     }
 
-    internal sealed class InvokableCallWithReturn<T0, T1, T2, T3, TResult> : BaseInvokableCallWithReturn<UnityFunc<T0, T1, T2, T3, TResult>>
+    internal sealed class InvokableCallWithReturn<T0, T1, T2, T3, TResult> : BaseInvokableCallWithReturn<Func<T0, T1, T2, T3, TResult>>
     {
         internal InvokableCallWithReturn(object target, MethodInfo method) : base(target, method) { }
 
         internal TResult Invoke(T0 arg0, T1 arg1, T2 arg2, T3 arg3)
         {
-            if (AllowInvoke)
-            {
-                return Func.Invoke(arg0, arg1, arg2, arg3);
-            }
-            return default;
+            return Func.Invoke(arg0, arg1, arg2, arg3);
         }
 
         protected override object Invoke_Impl(object[] args)
@@ -172,11 +129,7 @@ namespace JakePerry.Unity.Events
             ThrowOnInvalidArgument<T2>(args[2], 2);
             ThrowOnInvalidArgument<T3>(args[3], 3);
 
-            if (AllowInvoke)
-            {
-                return (object)Func.Invoke((T0)args[0], (T1)args[1], (T2)args[2], (T3)args[3]);
-            }
-            return null;
+            return (object)Func.Invoke((T0)args[0], (T1)args[1], (T2)args[2], (T3)args[3]);
         }
     }
 }

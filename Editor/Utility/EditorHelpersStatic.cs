@@ -59,11 +59,11 @@ namespace JakePerry.Unity
         /// <summary>
         /// Get a shared <see cref="GUIContent"/> instance &amp; set the texture.
         /// </summary>
-        /// <inheritdoc cref="TempContent"/>
-        internal static GUIContent GetTempContent(Texture image)
+        /// <inheritdoc cref="GetTempContent(string, string)"/>
+        internal static GUIContent GetTempContent(Texture image, string text = null, string tooltip = null)
         {
-            _tempContent.text = string.Empty;
-            _tempContent.tooltip = string.Empty;
+            _tempContent.text = text ?? string.Empty;
+            _tempContent.tooltip = tooltip ?? string.Empty;
             _tempContent.image = image;
             return _tempContent;
         }

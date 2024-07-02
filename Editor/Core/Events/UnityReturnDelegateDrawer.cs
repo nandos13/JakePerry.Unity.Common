@@ -15,8 +15,7 @@ namespace JakePerry.Unity.Events
     [CustomPropertyDrawer(typeof(UnityReturnDelegateBase), useForChildren: true)]
     public sealed class UnityReturnDelegateDrawer : PropertyDrawer
     {
-        private const string kTargetDestroyedPolicyTooltip = "Policy used when the target invocation object is destroyed.";
-        private const string kTargetDestroyedPolicyTooltipStatic = "* Not applicable for static member delegates. *\n" + kTargetDestroyedPolicyTooltip;
+        private const string kInvocationFailPolicyTooltip = "Policy used when invocation fails due to an exception.";
         private const string kFailToResolveMethodPolicyTooltip = "Policy used when the method cannot be resolved for invocation.";
         private const string kEditorBehaviourTooltip = "Behaviour when the delegate is invoked outside of Play Mode in the Editor.\nNote that executing runtime logic while the game is not running may be erroneous and potentially cause unwanted modifications to serialized data.";
         private const string kMockingNotSerializableMessage = "Return type is not serializable. Default value will be used.";
@@ -74,7 +73,7 @@ namespace JakePerry.Unity.Events
             public readonly SerializedProperty methodName;
             public readonly SerializedProperty arguments;
             public readonly SerializedProperty argumentsDefinedByEvent;
-            public readonly SerializedProperty targetDestroyedPolicy;
+            public readonly SerializedProperty invocationFailedPolicy;
             public readonly SerializedProperty failToResolveMethodPolicy;
             public readonly SerializedProperty editorBehaviour;
             public readonly SerializedProperty editorMockValue;
@@ -90,7 +89,7 @@ namespace JakePerry.Unity.Events
                 arguments = property.FindPropertyRelative("m_arguments");
                 argumentsDefinedByEvent = property.FindPropertyRelative("m_argumentsDefinedByEvent");
 
-                targetDestroyedPolicy = property.FindPropertyRelative("m_targetDestroyedPolicy");
+                invocationFailedPolicy = property.FindPropertyRelative("m_invocationFailedPolicy");
                 failToResolveMethodPolicy = property.FindPropertyRelative("m_failToResolveMethodPolicy");
                 editorBehaviour = property.FindPropertyRelative("m_editorBehaviour");
                 editorMockValue = property.FindPropertyRelative("m_editorMockValue");
@@ -335,7 +334,7 @@ namespace JakePerry.Unity.Events
             // TODO: Also consider putting a help box here with info stating that
             // invoking runtime logic may be dangerous.
 
-            var targetDestroyedPolicyProp = _context.properties.targetDestroyedPolicy;
+            var targetDestroyedPolicyProp = _context.properties.invocationFailedPolicy;
             var failToResolveMethodPolicyProp = _context.properties.failToResolveMethodPolicy;
             var behaviourProp = _context.properties.editorBehaviour;
             var modeProp = _context.properties.targetingStaticMember;
@@ -356,14 +355,11 @@ namespace JakePerry.Unity.Events
 
             var labelContent = GetTempContent(
                 text: "Destroyed Target Policy",
-                tooltip: @static ? kTargetDestroyedPolicyTooltipStatic : kTargetDestroyedPolicyTooltip);
+                tooltip: kInvocationFailPolicyTooltip);
             policyRect0 = EditorGUI.PrefixLabel(policyRect0, labelContent);
 
             EditorGUI.BeginChangeCheck();
-            using (new EditorGUI.DisabledScope(@static))
-            {
-                targetDestroyedPolicy = EditorGUI.Popup(policyRect0, targetDestroyedPolicy, _targetDestroyedPolicyOptions);
-            }
+            targetDestroyedPolicy = EditorGUI.Popup(policyRect0, targetDestroyedPolicy, _targetDestroyedPolicyOptions);
             if (EditorGUI.EndChangeCheck()) targetDestroyedPolicyProp.intValue = targetDestroyedPolicy;
 
             labelContent = GetTempContent(

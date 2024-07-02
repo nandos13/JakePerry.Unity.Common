@@ -12,13 +12,9 @@ namespace JakePerry.Unity.Events
             m_arguments = arguments;
         }
 
-        internal object Invoke()
+        private object Invoke()
         {
-            if (AllowInvoke)
-            {
-                return Method.Invoke(Target, m_arguments);
-            }
-            return null;
+            return Method.Invoke(Target, m_arguments);
         }
 
         protected override object Invoke_Impl(object[] args)

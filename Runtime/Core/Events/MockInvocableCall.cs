@@ -13,8 +13,6 @@ namespace JakePerry.Unity.Events
             m_result = value;
         }
 
-        bool IInvocableCall.AllowInvoke => true;
-
         object IInvocableCall.Invoke(object[] args)
         {
             _ = args ?? throw new ArgumentNullException(nameof(args));

@@ -8,25 +8,6 @@ namespace JakePerry.Unity.Events
         private readonly MethodInfo m_method;
         private readonly object m_target;
 
-        /// <summary>
-        /// Indicates whether this call is allowed to be invoked.
-        /// <para>
-        /// Invocation is not allowed if the target is a destroyed <see cref="UnityEngine.Object"/>.
-        /// </para>
-        /// </summary>
-        internal bool AllowInvoke
-        {
-            get
-            {
-                if (m_target is UnityEngine.Object obj)
-                {
-                    return obj != null;
-                }
-
-                return true;
-            }
-        }
-
         protected MethodInfo Method => m_method;
 
         protected object Target => m_target;
@@ -52,13 +33,32 @@ namespace JakePerry.Unity.Events
 
         protected abstract object Invoke_Impl(object[] args);
 
+        /// <summary>
+        /// Invoke the call with the given arguments.
+        /// </summary>
+        /// <param name="args">
+        /// Invocation arguments.
+        /// </param>
+        /// <returns>
+        /// Object instance returned by the invocation.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="args"/> is <langword cref="null"/>.
+        /// </exception>
+        /// <exception cref="InvocationTargetDestroyedException">
+        /// The invocation target is a destroyed <see cref="UnityEngine.Object"/>.
+        /// </exception>
         internal object Invoke(object[] args)
         {
             _ = args ?? throw new ArgumentNullException(nameof(args));
+
+            if (m_target is UnityEngine.Object obj && obj == null)
+            {
+                throw new InvocationTargetDestroyedException();
+            }
+
             return Invoke_Impl(args);
         }
-
-        bool IInvocableCall.AllowInvoke => this.AllowInvoke;
 
         object IInvocableCall.Invoke(object[] args) => this.Invoke(args);
     }

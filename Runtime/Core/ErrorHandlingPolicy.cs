@@ -3,7 +3,7 @@ namespace JakePerry.Unity
     /// <summary>
     /// An enumeration of possible error handling policies.
     /// </summary>
-    public enum ErrorHandlingPolicy
+    public enum ErrorHandlingPolicy : byte
     {
         /// <summary>
         /// The default policy is used.
