@@ -40,6 +40,7 @@ namespace JakePerry.Unity.Events
 
         internal TResult Invoke()
         {
+            if (!PreInvoke(out var ex)) throw ex;
             return Func.Invoke();
         }
 
@@ -57,6 +58,7 @@ namespace JakePerry.Unity.Events
 
         internal TResult Invoke(T0 arg0)
         {
+            if (!PreInvoke(out var ex)) throw ex;
             return Func.Invoke(arg0);
         }
 
@@ -76,6 +78,7 @@ namespace JakePerry.Unity.Events
 
         internal TResult Invoke(T0 arg0, T1 arg1)
         {
+            if (!PreInvoke(out var ex)) throw ex;
             return Func.Invoke(arg0, arg1);
         }
 
@@ -96,6 +99,7 @@ namespace JakePerry.Unity.Events
 
         internal TResult Invoke(T0 arg0, T1 arg1, T2 arg2)
         {
+            if (!PreInvoke(out var ex)) throw ex;
             return Func.Invoke(arg0, arg1, arg2);
         }
 
@@ -117,6 +121,7 @@ namespace JakePerry.Unity.Events
 
         internal TResult Invoke(T0 arg0, T1 arg1, T2 arg2, T3 arg3)
         {
+            if (!PreInvoke(out var ex)) throw ex;
             return Func.Invoke(arg0, arg1, arg2, arg3);
         }
 

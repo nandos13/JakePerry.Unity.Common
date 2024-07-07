@@ -5,8 +5,8 @@ namespace JakePerry.Unity.Events
     /// to be resolved, and the error handling policy is set to
     /// <see cref="ErrorHandlingPolicy.ThrowException"/>.
     /// </summary>
-    public sealed class ResolveMethodFailedException : JpBaseException
+    public sealed class InvocationMethodNotFoundException : InvokeFailedException
     {
-        public ResolveMethodFailedException(string message) : base(message) { }
+        public InvocationMethodNotFoundException(string message) : base(message) { }
     }
 }

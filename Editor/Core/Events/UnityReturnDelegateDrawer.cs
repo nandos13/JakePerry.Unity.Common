@@ -15,9 +15,9 @@ namespace JakePerry.Unity.Events
     [CustomPropertyDrawer(typeof(UnityReturnDelegateBase), useForChildren: true)]
     public sealed class UnityReturnDelegateDrawer : PropertyDrawer
     {
-        private const string kInvocationFailPolicyTooltip = "Policy used when invocation fails due to an exception.";
-        private const string kFailToResolveMethodPolicyTooltip = "Policy used when the method cannot be resolved for invocation.";
-        private const string kEditorBehaviourTooltip = "Behaviour when the delegate is invoked outside of Play Mode in the Editor.\nNote that executing runtime logic while the game is not running may be erroneous and potentially cause unwanted modifications to serialized data.";
+        private const string kErrorPolicyTooltip = "Policy used when invocation fails due to an exception.";
+        private const string kWarnInvokeInEditorIsDangerousMessage = "Executing runtime logic while the game is not running may be erroneous and potentially cause unwanted modifications to serialized data.";
+        private const string kEditorBehaviourTooltip = "Behaviour when the delegate is invoked outside of Play Mode in the Editor.\nPlease note: " + kWarnInvokeInEditorIsDangerousMessage;
         private const string kMockingNotSerializableMessage = "Return type is not serializable. Default value will be used.";
 
         private const string kBasicSettingsTabHint = "UnityReturnDelegateDrawer.Tab.Basic";
@@ -26,36 +26,21 @@ namespace JakePerry.Unity.Events
         private const float kHeaderHeight = 18f;
         private const float kNextElementSpacing = 1f;
 
-        private static readonly GUIContent _policyDefaultContent = new GUIContent(
-            "Default (Global)",
-            "Use the global error handling policy for this error.");
-
-        private static readonly GUIContent _policyIgnoreContent = new GUIContent(
-            "Ignore Error",
-            "Ignore the error and fail gracefully. Invocation does not proceed, and the default value is returned.");
-
-        private static readonly GUIContent _policyLogErrorContent = new GUIContent(
-            "Log Error",
-            "Log an error. Invocation does not proceed, and the default value is returned.");
-
-        private static readonly GUIContent[] _targetDestroyedPolicyOptions = new GUIContent[4]
+        private static readonly GUIContent[] _errorPolicyOptions = new GUIContent[4]
         {
-            _policyDefaultContent,
-            _policyIgnoreContent,
-            _policyLogErrorContent,
             new GUIContent(
-                "Log Exception",
-                "An exception of type " + nameof(InvocationTargetDestroyedException) + " is thrown.")
-        };
-
-        private static readonly GUIContent[] _failToResolveMethodPolicyOptions = new GUIContent[4]
-        {
-            _policyDefaultContent,
-            _policyIgnoreContent,
-            _policyLogErrorContent,
+                "Default (Global)",
+                "Use the global error handling policy for this error."),
             new GUIContent(
-                "Log Exception",
-                "An exception of type " + nameof(ResolveMethodFailedException) + " is thrown.")
+                "Ignore Error",
+                "Ignore the error. Delegate invocation does not proceed, and the default value is returned."),
+            new GUIContent(
+                "Log Error",
+                "Log an error. Delegate invocation does not proceed, and the default value is returned."),
+            new GUIContent(
+                "Throw Exception",
+                "Throw an exception to halt delegate invocation. The thrown exception is always of type " +
+                nameof(InvokeFailedException) + " or a child type and can be caught as such.")
         };
 
         private sealed class State
@@ -74,7 +59,6 @@ namespace JakePerry.Unity.Events
             public readonly SerializedProperty arguments;
             public readonly SerializedProperty argumentsDefinedByEvent;
             public readonly SerializedProperty invocationFailedPolicy;
-            public readonly SerializedProperty failToResolveMethodPolicy;
             public readonly SerializedProperty editorBehaviour;
             public readonly SerializedProperty editorMockValue;
 
@@ -90,7 +74,6 @@ namespace JakePerry.Unity.Events
                 argumentsDefinedByEvent = property.FindPropertyRelative("m_argumentsDefinedByEvent");
 
                 invocationFailedPolicy = property.FindPropertyRelative("m_invocationFailedPolicy");
-                failToResolveMethodPolicy = property.FindPropertyRelative("m_failToResolveMethodPolicy");
                 editorBehaviour = property.FindPropertyRelative("m_editorBehaviour");
                 editorMockValue = property.FindPropertyRelative("m_editorMockValue");
             }
@@ -175,16 +158,21 @@ namespace JakePerry.Unity.Events
             return state;
         }
 
-        private static void DrawHintIcon(Rect rect, string tooltip)
+        private static void DrawHintIcon(Rect rect, string tooltip, MessageType iconType = MessageType.Error)
         {
-            var icon = UnityEditorHelper.GetMessageIcon(MessageType.Error);
+            if (Event.current.type != EventType.Repaint) return;
+
+            var icon = UnityEditorHelper.GetMessageIcon(iconType);
             var iconStyle = EditorStyles.iconButton;
             rect = iconStyle.margin.Remove(rect);
 
             var hintContent = GetTempContent(icon);
             hintContent.tooltip = tooltip;
 
-            EditorGUI.LabelField(rect, hintContent, iconStyle);
+            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+            {
+                EditorGUI.LabelField(rect, hintContent, iconStyle);
+            }
         }
 
         private static void AssignMethod(object e)
@@ -230,8 +218,6 @@ namespace JakePerry.Unity.Events
         private void DrawHeader(Rect rect, GUIContent label)
         {
             // TODO: Consider supporting argument coloring for header signature
-            // TODO: Consider showing small error icon on left of name if any errors are present.
-            //       Will need to draw header last in that case
 
             var backgroundRect = rect;
             rect = rect.PadLeft(6);
@@ -319,57 +305,42 @@ namespace JakePerry.Unity.Events
             }
         }
 
-        private void DrawAdvancedSettings(Rect rect, SerializedProperty property)
+        private void DrawAdvancedSettings(Rect rect)
         {
-            // TODO: This is where Unity would allow a dropdown to specify
-            // whether the callback runs in runtime mode, editor & runtime,
-            // or none. Doesnt really apply to return delegates where the return
-            // value is more important than the implementation, however there may
-            // be reason to disable in editor.
-            // Provide a way to specify what happens in editor:
-            // 1. [Default] Return default value, no code is run
-            // 2. Editor always returns a mock value (might combine with default).
-            // 3. Run delegate as with runtime mode.
-
-            // TODO: Also consider putting a help box here with info stating that
-            // invoking runtime logic may be dangerous.
-
-            var targetDestroyedPolicyProp = _context.properties.invocationFailedPolicy;
-            var failToResolveMethodPolicyProp = _context.properties.failToResolveMethodPolicy;
+            var errorPolicyProp = _context.properties.invocationFailedPolicy;
             var behaviourProp = _context.properties.editorBehaviour;
-            var modeProp = _context.properties.targetingStaticMember;
 
-            var targetDestroyedPolicy = targetDestroyedPolicyProp.intValue;
-            var failToResolveMethodPolicy = failToResolveMethodPolicyProp.intValue;
+            var errorPolicy = errorPolicyProp.intValue;
             var behaviour = behaviourProp.intValue;
-            bool @static = modeProp.boolValue;
+            var mockProp = _context.properties.editorMockValue;
 
-            var policyRect0 = rect.WithHeight(LineHeight);
-            rect = rect.PadTop(LineHeight + Spacing);
-
-            var policyRect1 = rect.WithHeight(LineHeight);
+            var policyRect = rect.WithHeight(LineHeight);
             rect = rect.PadTop(LineHeight + Spacing);
 
             var behaviourRect = rect.WithHeight(LineHeight);
             rect = rect.PadTop(LineHeight + Spacing);
 
             var labelContent = GetTempContent(
-                text: "Destroyed Target Policy",
-                tooltip: kInvocationFailPolicyTooltip);
-            policyRect0 = EditorGUI.PrefixLabel(policyRect0, labelContent);
+                text: "Error Handling Policy",
+                tooltip: kErrorPolicyTooltip);
+            policyRect = EditorGUI.PrefixLabel(policyRect, labelContent);
 
             EditorGUI.BeginChangeCheck();
-            targetDestroyedPolicy = EditorGUI.Popup(policyRect0, targetDestroyedPolicy, _targetDestroyedPolicyOptions);
-            if (EditorGUI.EndChangeCheck()) targetDestroyedPolicyProp.intValue = targetDestroyedPolicy;
+            errorPolicy = EditorGUI.Popup(policyRect, errorPolicy, _errorPolicyOptions);
+            if (EditorGUI.EndChangeCheck()) errorPolicyProp.intValue = errorPolicy;
 
-            labelContent = GetTempContent(
-                text: "Resolve Method Failure Policy",
-                tooltip: kFailToResolveMethodPolicyTooltip);
-            policyRect1 = EditorGUI.PrefixLabel(policyRect1, labelContent);
-
-            EditorGUI.BeginChangeCheck();
-            failToResolveMethodPolicy = EditorGUI.Popup(policyRect1, failToResolveMethodPolicy, _failToResolveMethodPolicyOptions);
-            if (EditorGUI.EndChangeCheck()) failToResolveMethodPolicyProp.intValue = failToResolveMethodPolicy;
+            if (behaviour == EditorBehaviours.kReturnMockValue && mockProp == null)
+            {
+                var hintRect = behaviourRect.WithWidth(LineHeight, anchorRight: true);
+                behaviourRect = behaviourRect.PadRight(LineHeight + Spacing);
+                DrawHintIcon(hintRect, kMockingNotSerializableMessage, MessageType.Warning);
+            }
+            else if (behaviour == EditorBehaviours.kInvokeInEditMode)
+            {
+                var hintRect = behaviourRect.WithWidth(LineHeight, anchorRight: true);
+                behaviourRect = behaviourRect.PadRight(LineHeight + Spacing);
+                DrawHintIcon(hintRect, kWarnInvokeInEditorIsDangerousMessage, MessageType.Warning);
+            }
 
             labelContent = GetTempContent(
                 text: "Editor Behaviour",
@@ -379,20 +350,25 @@ namespace JakePerry.Unity.Events
             EditorGUI.BeginChangeCheck();
             behaviour = EditorGUI.Popup(behaviourRect, behaviour, EditorInvocationOptions);
 
-            if (EditorGUI.EndChangeCheck()) behaviourProp.intValue = behaviour;
+            if (EditorGUI.EndChangeCheck())
+            {
+                behaviourProp.intValue = behaviour;
+                if (mockProp != null)
+                {
+                    // TODO: Investigate why this seemingly isnt saving. Logs indicate the value is applied,
+                    // the target object is dirty, and the value persists until the end of OnGUI call.
+                    // The next gui, it's back to the last value.
+                    // I also tried Activator.CreateInstance to create a new obj in case null was tripping it up,
+                    // but that didnt help at all. The custom drawer for SerDataClass was also disabled.
+                    PropertyPathWalker.SetDefaultValue(mockProp);
+                }
+            }
 
             if (behaviour == EditorBehaviours.kReturnMockValue)
             {
-                Rect mockValueRect;
-                var mockProp = _context.properties.editorMockValue;
-                if (mockProp == null)
+                if (mockProp != null)
                 {
-                    mockValueRect = rect.WithHeight(LineHeight);
-                    EditorGUI.HelpBox(mockValueRect, kMockingNotSerializableMessage, MessageType.Warning);
-                }
-                else
-                {
-                    mockValueRect = rect.WithHeight(EditorGUI.GetPropertyHeight(mockProp, true));
+                    var mockValueRect = rect.WithHeight(EditorGUI.GetPropertyHeight(mockProp, true));
 
                     // TODO: Check this when nested, make sure indent is correct.
                     EditorGUI.indentLevel++;
@@ -402,9 +378,9 @@ namespace JakePerry.Unity.Events
                     EditorGUI.indentLevel--;
 
                     EditorGUI.PropertyField(mockValueRect, mockProp, GUIContent.none, true);
-                }
 
-                rect = rect.PadTop(mockValueRect.height + Spacing);
+                    rect = rect.PadTop(mockValueRect.height + Spacing);
+                }
             }
         }
 
@@ -885,8 +861,7 @@ namespace JakePerry.Unity.Events
 
                 if (state.viewingAdvancedSettings)
                 {
-                    height += LineHeight + LineHeight + LineHeight + Spacing + Spacing;
-                    // TODO: Args height
+                    height += LineHeight + LineHeight + Spacing;
 
                     var behaviour = properties.editorBehaviour.intValue;
                     if (behaviour == EditorBehaviours.kReturnMockValue)
@@ -895,11 +870,7 @@ namespace JakePerry.Unity.Events
 
                         height += Spacing;
 
-                        if (mockProp == null)
-                        {
-                            height += LineHeight;
-                        }
-                        else
+                        if (mockProp != null)
                         {
                             height += EditorGUI.GetPropertyHeight(mockProp, true);
                         }
@@ -936,12 +907,17 @@ namespace JakePerry.Unity.Events
             }
             finally { _context = default; }
 
+            // Spacing before the next element
+            height += LineHeight;
+
             return height;
         }
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
             var serializedMember = GetMember(property);
+
+            position = position.PadBottom(LineHeight);
 
             try
             {
@@ -967,13 +943,9 @@ namespace JakePerry.Unity.Events
 
                     if (state.viewingAdvancedSettings)
                     {
-                        DrawAdvancedSettings(position, property);
-
-                        // TODO: Option to
-                        // 1. [Default] return a mock value specifically for editor
-                        // 2. Invoke as normal
-                        // If returning mock value, allow it to be set in editor if its a serializable type,
-                        // otherwise show a label warning that 'default' value will be returned
+                        ++EditorGUI.indentLevel;
+                        DrawAdvancedSettings(position);
+                        --EditorGUI.indentLevel;
                     }
                     else
                     {

@@ -43,9 +43,6 @@ namespace JakePerry.Unity.Events
         [SerializeField]
         private byte m_invocationFailedPolicy;
 
-        [SerializeField]
-        private byte m_failToResolveMethodPolicy;
-
         private bool m_dirty = true;
         private RuntimeInvocableCall m_call;
 
@@ -58,17 +55,7 @@ namespace JakePerry.Unity.Events
         public ErrorHandlingPolicy InvocationFailedPolicy
         {
             get => (ErrorHandlingPolicy)m_invocationFailedPolicy;
-            set => m_invocationFailedPolicy = ReturnDelegatesUtility.ErrorPolicyToByte(value);
-        }
-
-        /// <summary>
-        /// Indicates the error handling policy that should be enacted when the method
-        /// to invoke cannot be resolved.
-        /// </summary>
-        public ErrorHandlingPolicy FailedToResolveMethodPolicy
-        {
-            get => (ErrorHandlingPolicy)m_failToResolveMethodPolicy;
-            set => m_failToResolveMethodPolicy = ReturnDelegatesUtility.ErrorPolicyToByte(value);
+            set => m_invocationFailedPolicy = value.ToByte();
         }
 
 #if UNITY_EDITOR
@@ -173,77 +160,11 @@ namespace JakePerry.Unity.Events
             return method;
         }
 
-        private static Type[] GetCachedInvocationArgumentTypesWithValidationChecks(InvocationArgument[] args, ErrorHandlingPolicy policy)
-        {
-            var argCount = args?.Length ?? 0;
-            if (argCount == 0)
-            {
-                return Array.Empty<Type>();
-            }
-
-            var result = new Type[argCount];
-            for (int i = 0; i < argCount; ++i)
-            {
-                var t = args[i].ArgumentType;
-
-                if (t is null)
-                {
-                    if (policy == ErrorHandlingPolicy.Default)
-                    {
-                        policy = ReturnDelegatesConfig.FailedToResolveMethodPolicy;
-                    }
-
-                    if (policy > ErrorHandlingPolicy.Ignore)
-                    {
-                        var err =
-                            "Cannot resolve method; one or more serialized arguments returned a null type. The data must be manually fixed and reserialized. " +
-                            "See below for more info:\n" +
-                            "This error can occur if the argument's type is renamed, relocated or removed from the project after the data was saved.\n" +
-                            "Argument index: " +
-                            i.ToString() +
-                            "\nSerialized type name: " +
-                            args[i].Debug_GetSerializedTypeName();
-
-                        if (policy == ErrorHandlingPolicy.LogError)
-                        {
-                            ReturnDelegatesUtility.LogError(err);
-                        }
-                        else
-                        {
-                            throw new ResolveMethodFailedException(err);
-                        }
-                    }
-
-                    return null;
-                }
-
-                result[i] = t;
-            }
-
-            return result;
-        }
-
-        private static object[] GetCachedInvocationArgumentValues(InvocationArgument[] args)
-        {
-            var argCount = args?.Length ?? 0;
-            if (argCount == 0)
-            {
-                return Array.Empty<object>();
-            }
-
-            var result = new object[argCount];
-            for (int i = 0; i < argCount; ++i)
-            {
-                result[i] = args[i].ArgumentValue;
-            }
-
-            return result;
-        }
-
-        protected static void HandleInvocationException(Exception exception, ErrorHandlingPolicy policy)
+        protected void HandleInvocationException(Exception exception)
         {
             if (exception is null) return;
 
+            var policy = InvocationFailedPolicy;
             if (policy == ErrorHandlingPolicy.Default)
             {
                 policy = ReturnDelegatesConfig.InvocationFailedPolicy;
@@ -260,7 +181,7 @@ namespace JakePerry.Unity.Events
                 else
                 {
                     ReturnDelegatesUtility.LogError($"Exception of type {exception.GetType()} occurred during invocation " +
-                        $"(see the following exception log for details). " +
+                        "(see the following exception log for details). " +
                         "Invocation will not proceed and a default value will be returned.");
 
                     Debug.LogException(exception);
@@ -268,7 +189,12 @@ namespace JakePerry.Unity.Events
             }
             else if (policy == ErrorHandlingPolicy.ThrowException)
             {
-                ExceptionDispatchInfo.Throw(exception);
+                if (exception is InvokeFailedException)
+                {
+                    ExceptionDispatchInfo.Throw(exception);
+                }
+
+                throw new InvokeFailedException(exception);
             }
         }
 
@@ -287,17 +213,63 @@ namespace JakePerry.Unity.Events
             }
             else
             {
-                var policy = FailedToResolveMethodPolicy;
-                argTypes = GetCachedInvocationArgumentTypesWithValidationChecks(m_arguments, policy);
-
-                // A null array will be returned if there was a problem with serialized argument data,
-                // in which case the correct method will not be resolvable.
-                if (argTypes is null)
+                var policy = InvocationFailedPolicy;
+                if (policy == ErrorHandlingPolicy.Default)
                 {
-                    return null;
+                    policy = ReturnDelegatesConfig.InvocationFailedPolicy;
+                }
+
+                var args = m_arguments;
+                var argCount = args?.Length ?? 0;
+                if (argCount == 0)
+                {
+                    argTypes = Array.Empty<Type>();
+                }
+                else
+                {
+                    var result = new Type[argCount];
+                    for (int i = 0; i < argCount; ++i)
+                    {
+                        var t = args[i].ArgumentType;
+
+                        if (t is null)
+                        {
+                            if (policy > ErrorHandlingPolicy.Ignore)
+                            {
+                                var err =
+                                    "Cannot resolve method; one or more serialized arguments returned a null type. The data must be manually fixed and reserialized. " +
+                                    "See below for more info:\n" +
+                                    "This error can occur if the argument's type is renamed, relocated or removed from the project after the data was saved.\n" +
+                                    "Argument index: " +
+                                    i.ToString() +
+                                    "\nSerialized type name: " +
+                                    args[i].Debug_GetSerializedTypeName();
+
+                                if (policy == ErrorHandlingPolicy.LogError)
+                                {
+                                    ReturnDelegatesUtility.LogError(err);
+                                }
+                                else
+                                {
+                                    throw new InvocationMethodNotFoundException(err);
+                                }
+                            }
+
+                            // There is a problem with serialized argument data,
+                            // in which case the correct method will not be resolvable.
+                            return null;
+                        }
+
+                        result[i] = t;
+                    }
+
+                    argTypes = result;
                 }
             }
 
+            // TODO: GetValidMethodInfo might log an error, without consulting the current
+            // policy. Refactor so it doesn't have the 'out string error'. Maybe if a match is
+            // found with wrong return type, throw and the inspector class can catch it.
             var returnType = ReturnType;
             return GetValidMethodInfo(targetType, m_targetingStaticMember, m_methodName, returnType, argTypes);
         }
@@ -340,6 +312,9 @@ namespace JakePerry.Unity.Events
                     var method = FindMethod(type);
                     if (method != null)
                     {
+                        // TODO: Check if this condition is correct. Is this instead meant to be checking m_targetingStaticMember?
+                        // This code may be correct if there's a possibility FindMethod might return a method that is the wrong
+                        // instance/static
                         if (method.IsStatic == (m_target is null))
                         {
                             var target = method.IsStatic ? null : m_target;
@@ -350,7 +325,7 @@ namespace JakePerry.Unity.Events
                             }
                             else
                             {
-                                var cachedArguments = GetCachedInvocationArgumentValues(m_arguments);
+                                var cachedArguments = InvocationArgument.GetArgumentValues(m_arguments);
                                 m_call = new CachedInvocableCall(target, method, cachedArguments);
                             }
                         }

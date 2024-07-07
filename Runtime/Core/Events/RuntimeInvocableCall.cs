@@ -3,6 +3,7 @@ using System.Reflection;
 
 namespace JakePerry.Unity.Events
 {
+    // TODO: Documentation
     internal abstract class RuntimeInvocableCall : IInvocableCall
     {
         private readonly MethodInfo m_method;
@@ -31,6 +32,32 @@ namespace JakePerry.Unity.Events
             m_target = target;
         }
 
+        /// <summary>
+        /// Performs the necessary validation required before the runtime call is invoked.
+        /// </summary>
+        /// <param name="ex">
+        /// Out parameter which is assigned an exception that must be thrown if
+        /// this method returns <see langword="false"/>.
+        /// </param>
+        /// <returns>
+        /// <see langword="true"/> if the invocation is allowed to proceed; Otherwise,
+        /// <see langword="false"/> if <paramref name="ex"/> is to be thrown.
+        /// </returns>
+        /// <remarks>
+        /// This method returns an exception and expects the caller to throw it
+        /// to improve stacktrace readability.
+        /// </remarks>
+        protected bool PreInvoke(out Exception ex)
+        {
+            ex = null;
+            if (m_target is UnityEngine.Object obj && obj == null)
+            {
+                ex = new InvocationTargetDestroyedException();
+            }
+
+            return ex is null;
+        }
+
         protected abstract object Invoke_Impl(object[] args);
 
         /// <summary>
@@ -52,10 +79,7 @@ namespace JakePerry.Unity.Events
         {
             _ = args ?? throw new ArgumentNullException(nameof(args));
 
-            if (m_target is UnityEngine.Object obj && obj == null)
-            {
-                throw new InvocationTargetDestroyedException();
-            }
+            if (!PreInvoke(out var ex)) throw ex;
 
             return Invoke_Impl(args);
         }

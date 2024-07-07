@@ -30,6 +30,8 @@ namespace JakePerry.Unity
         private const string kArrayExpression = "Array.data[";
         private const int kArrayExprLen = 11; // kArrayExpression.Length
 
+        private static readonly object _setDefaultValIdentifier = new();
+
         private readonly struct Capture
         {
             public readonly ValueMemberInfo member;
@@ -245,17 +247,12 @@ namespace JakePerry.Unity
             return list[^1].value;
         }
 
-        /// <summary>
-        /// Finds the field or property at the given property path and sets its value.
-        /// </summary>
-        /// <inheritdoc cref="GetFieldOrProperty(object, string)"/>
-        /// <param name="value">The value to be set.</param>
-        public static void SetValue(object rootObject, string path, object value)
+        private static void SetValueInternal(object rootObject, string path, object value)
         {
-            CheckArguments(rootObject, path);
-
             using var scope = ListPool.RentInScope(out List<Capture> list);
             ResolveStack(rootObject, path, list);
+
+            bool setDefault = ReferenceEquals(value, _setDefaultValIdentifier);
 
             for (int i = list.Count - 1; i >= 0; --i)
             {
@@ -264,10 +261,23 @@ namespace JakePerry.Unity
                 if (c.propertyIndex > -1)
                 {
                     var array = GetArray(c.target);
+
+                    if (setDefault)
+                    {
+                        setDefault = false;
+                        value = ReflectionEx.GetDefaultValue(array.GetType().GetElementType());
+                    }
+
                     array.SetValue(value, c.propertyIndex);
                 }
                 else
                 {
+                    if (setDefault)
+                    {
+                        setDefault = false;
+                        value = ReflectionEx.GetDefaultValue(c.member.MemberType);
+                    }
+
                     c.member.SetValue(c.target, value);
                 }
 
@@ -276,6 +286,30 @@ namespace JakePerry.Unity
 
                 value = c.target;
             }
+        }
+
+        /// <summary>
+        /// Finds the field or property at the given property path and sets its value.
+        /// </summary>
+        /// <param name="rootObject">Root object instance.</param>
+        /// <param name="path">The property path to query.</param>
+        /// <param name="value">The value to be set.</param>
+        public static void SetValue(object rootObject, string path, object value)
+        {
+            CheckArguments(rootObject, path);
+            SetValueInternal(rootObject, path, value);
+        }
+
+        /// <summary>
+        /// Finds the field or property at the given property path and sets its value
+        /// to the default value for said member type.
+        /// </summary>
+        /// <param name="rootObject">Root object instance.</param>
+        /// <param name="path">The property path to query.</param>
+        public static void SetDefaultValue(object rootObject, string path)
+        {
+            CheckArguments(rootObject, path);
+            SetValueInternal(rootObject, path, _setDefaultValIdentifier);
         }
 
 #if UNITY_EDITOR
@@ -300,12 +334,12 @@ namespace JakePerry.Unity
             return GetValue(rootObject, path);
         }
 
-        /// <inheritdoc cref="SetValue(object, string)"/>
-        /// <param name="setDirty">
+        /// <inheritdoc cref="SetValue(object, string, object)"/>
+        /// <param name="dirty">
         /// Indicates whether <see cref="EditorUtility.SetDirty(UnityEngine.Object)"/> should
         /// be invoked on the root object. Defaults to <see langword="true"/>.
         /// </param>
-        public static void SetValue(SerializedProperty property, object value, bool setDirty)
+        public static void SetValue(SerializedProperty property, object value, bool dirty = true)
         {
             _ = property ?? throw new ArgumentNullException(nameof(property));
             var rootObject = property.serializedObject.targetObject;
@@ -313,16 +347,29 @@ namespace JakePerry.Unity
 
             SetValue(rootObject, path, value);
 
-            if (setDirty)
+            if (dirty)
             {
                 EditorUtility.SetDirty(rootObject);
             }
         }
 
-        /// <inheritdoc cref="SetValue(SerializedProperty, object, bool)"/>
-        public static void SetValue(SerializedProperty property, object value)
+        /// <inheritdoc cref="SetDefaultValue(object, string)"/>
+        /// <param name="dirty">
+        /// Indicates whether <see cref="EditorUtility.SetDirty(UnityEngine.Object)"/> should
+        /// be invoked on the root object. Defaults to <see langword="true"/>.
+        /// </param>
+        public static void SetDefaultValue(SerializedProperty property, bool dirty = true)
         {
-            SetValue(property, value, true);
+            _ = property ?? throw new ArgumentNullException(nameof(property));
+            var rootObject = property.serializedObject.targetObject;
+            var path = property.propertyPath;
+
+            SetDefaultValue(rootObject, path);
+
+            if (dirty)
+            {
+                EditorUtility.SetDirty(rootObject);
+            }
         }
 
 #endif // UNITY_EDITOR

@@ -16,16 +16,5 @@ namespace JakePerry.Unity.Events
             message = $"[UnityReturnDelegates] {message}";
             Debug.LogError(message, context);
         }
-
-        internal static byte ErrorPolicyToByte(ErrorHandlingPolicy value)
-        {
-            if (value < ErrorHandlingPolicy.Default ||
-                value > ErrorHandlingPolicy.ThrowException)
-            {
-                throw new ArgumentOutOfRangeException(nameof(value));
-            }
-
-            return (byte)(int)value;
-        }
     }
 }

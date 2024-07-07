@@ -43,7 +43,7 @@ namespace JakePerry.Unity.Events
             }
             catch (Exception ex)
             {
-                HandleInvocationException(ex, this.InvocationFailedPolicy);
+                HandleInvocationException(ex);
                 return default;
             }
         }
@@ -97,7 +97,7 @@ namespace JakePerry.Unity.Events
             }
             catch (Exception ex)
             {
-                HandleInvocationException(ex, this.InvocationFailedPolicy);
+                HandleInvocationException(ex);
                 return default;
             }
         }
@@ -152,7 +152,7 @@ namespace JakePerry.Unity.Events
             }
             catch (Exception ex)
             {
-                HandleInvocationException(ex, this.InvocationFailedPolicy);
+                HandleInvocationException(ex);
                 return default;
             }
         }
@@ -208,7 +208,7 @@ namespace JakePerry.Unity.Events
             }
             catch (Exception ex)
             {
-                HandleInvocationException(ex, this.InvocationFailedPolicy);
+                HandleInvocationException(ex);
                 return default;
             }
         }
@@ -265,7 +265,7 @@ namespace JakePerry.Unity.Events
             }
             catch (Exception ex)
             {
-                HandleInvocationException(ex, this.InvocationFailedPolicy);
+                HandleInvocationException(ex);
                 return default;
             }
         }

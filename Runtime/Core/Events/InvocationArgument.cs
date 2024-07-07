@@ -14,6 +14,23 @@ namespace JakePerry.Unity.Events
         internal abstract object ArgumentValue { get; }
 
         internal virtual string Debug_GetSerializedTypeName() => string.Empty;
+
+        internal static object[] GetArgumentValues(InvocationArgument[] args)
+        {
+            var argCount = args?.Length ?? 0;
+            if (argCount == 0)
+            {
+                return Array.Empty<object>();
+            }
+
+            var result = new object[argCount];
+            for (int i = 0; i < argCount; ++i)
+            {
+                result[i] = args[i].ArgumentValue;
+            }
+
+            return result;
+        }
     }
 
     [Serializable]
