@@ -43,6 +43,12 @@ namespace JakePerry.Unity.Events
                 nameof(InvokeFailedException) + " or a child type and can be caught as such.")
         };
 
+        private struct SelectableMember
+        {
+            public MemberInfo member;
+            public bool obsolete;
+        }
+
         private sealed class State
         {
             public bool viewingAdvancedSettings;
@@ -504,19 +510,17 @@ namespace JakePerry.Unity.Events
             }
         }
 
-        private static List<MemberInfo> GetMembersWithReturnType(Type declaringType, Type returnType, BindingFlags bindingAttr)
+        private static List<SelectableMember> GetMembersWithReturnType(Type declaringType, Type returnType, BindingFlags bindingAttr)
         {
-            var list = new List<MemberInfo>();
+            var list = new List<SelectableMember>();
 
             foreach (var m in declaringType.GetMethods(bindingAttr))
                 if (!m.IsSpecialName &&
                     returnType.IsAssignableFrom(m.ReturnType))
                 {
-                    // TODO: Handle obsolete, same as below
-                    if (m.GetCustomAttribute<ObsoleteAttribute>() == null)
-                    {
-                        list.Add(m);
-                    }
+                    bool obsolete = m.GetCustomAttribute<ObsoleteAttribute>() != null;
+
+                    list.Add(new() { member = m, obsolete = obsolete });
                 }
 
             foreach (var p in declaringType.GetProperties(bindingAttr))
@@ -524,12 +528,11 @@ namespace JakePerry.Unity.Events
                 var m = p.GetGetMethod();
                 if (m != null && returnType.IsAssignableFrom(m.ReturnType))
                 {
-                    // TODO: Settings option to show or hide Obsolete methods. Prefix with [Obsolete]
-                    if (p.GetCustomAttribute<ObsoleteAttribute>() == null &&
-                        m.GetCustomAttribute<ObsoleteAttribute>() == null)
-                    {
-                        list.Add(p);
-                    }
+                    bool obsolete =
+                        p.GetCustomAttribute<ObsoleteAttribute>() != null ||
+                        m.GetCustomAttribute<ObsoleteAttribute>() != null;
+
+                    list.Add(new() { member = p, obsolete = obsolete });
                 }
             }
 
@@ -565,14 +568,16 @@ namespace JakePerry.Unity.Events
             var list = GetMembersWithReturnType(declaringType, metadata.returnType, bindingAttr);
 
             // Sort the list
-            list.Sort(CompareMemberDisplayOrder);
+            list.Sort((x, y) => CompareMemberDisplayOrder(x.member, y.member));
 
             var dynamicParams = metadata.eventDefinedArgs;
             var dynamicParameterCount = dynamicParams.Length;
 
-            var list2 = new List<MemberInfo>();
-            foreach (var m in list)
+            var list2 = new List<SelectableMember>();
+            foreach (var item in list)
             {
+                var m = item.member;
+
                 bool match = false;
                 if (m is PropertyInfo prop)
                 {
@@ -599,7 +604,7 @@ namespace JakePerry.Unity.Events
 
                 if (match)
                 {
-                    list2.Add(m);
+                    list2.Add(item);
                 }
             }
 
@@ -609,18 +614,26 @@ namespace JakePerry.Unity.Events
 
                 menu.AddItem(new GUIContent("Dynamic Arguments"), false, null);
 
-                foreach (var m in list2)
+                foreach (var item in list2)
                 {
+                    var m = item.member;
+
                     bool on = currentMethod == m && definedByEvent;
-                    AddMemberSelectOption(menu, GetNiceMemberString(m, false), on, properties, m, true);
+                    var name = GetNiceMemberString(m, false);
+
+                    if (item.obsolete) name = "[Obsolete] " + name;
+
+                    AddMemberSelectOption(menu, name, on, properties, m, true);
                 }
             }
 
             list2.Clear();
 
             bool anyReturnsSubclass = false;
-            foreach (var m in list)
+            foreach (var item in list)
             {
+                var m = item.member;
+
                 if (!anyReturnsSubclass)
                 {
                     anyReturnsSubclass = ((m is PropertyInfo p) ? p.PropertyType : (m as MethodInfo).ReturnType) != metadata.returnType;
@@ -638,7 +651,7 @@ namespace JakePerry.Unity.Events
                         }
                     }
 
-                list2.Add(m);
+                list2.Add(item);
 
             SKIP_MEMBER:
                 continue;
@@ -654,10 +667,16 @@ namespace JakePerry.Unity.Events
 
                 menu.AddItem(new GUIContent("Static Arguments"), false, null);
 
-                foreach (var m in list2)
+                foreach (var item in list2)
                 {
+                    var m = item.member;
+
                     bool on = currentMethod == m && !definedByEvent;
-                    AddMemberSelectOption(menu, GetNiceMemberString(m, includeReturnType), on, properties, m, false);
+                    string name = GetNiceMemberString(m, includeReturnType);
+
+                    if (item.obsolete) name = "[Obsolete] " + name;
+
+                    AddMemberSelectOption(menu, name, on, properties, m, false);
                 }
             }
 
