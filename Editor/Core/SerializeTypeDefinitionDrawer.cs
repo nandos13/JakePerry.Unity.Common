@@ -47,6 +47,10 @@ namespace JakePerry.Unity
         private static readonly Dictionary<(Type, string), bool> _allowUnboundGenericsLookup = new();
         private static readonly Dictionary<Type, Type[]> _unboundArgsCache = new();
 
+        private static readonly RectOffset _totalRectPad = new(0, 0, 10, 10);
+        private static readonly Dictionary<(SerializedObject, string), Rect> _totalRectCache = new();
+        private static Vector2 _lastMousePos;
+
         /// <summary>
         /// Indicates whether unbound generics are explicitly disallowed for the
         /// current serialized data.
@@ -95,13 +99,16 @@ namespace JakePerry.Unity
 
         private static GUIStyle GroupBox => _groupBox ??= new GUIStyle("GroupBox");
 
-        private bool IsMouseOverTotalRect()
+        private bool IsMouseOverTotalRect(SerializedObject o)
         {
-            // TODO: Implement this properly so the drawer only forces repaint if the mouse
-            // is over the rect of the property.
-            // Remember that this PropertyDrawer may draw many properties in one editor update,
-            // so we may need to cache multiple rects somewhere.
-            return true;
+            foreach (var pair in _totalRectCache)
+                if (pair.Key.Item1 == o &&
+                    _totalRectPad.Add(pair.Value).Contains(_lastMousePos))
+                {
+                    return true;
+                }
+
+            return false;
         }
 
         private static Type[] GetGenericArgumentsAndCache(Type t)
@@ -717,6 +724,16 @@ namespace JakePerry.Unity
 
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
+            var e = Event.current;
+            if (e.type == EventType.Repaint)
+            {
+                _totalRectCache[(property.serializedObject, property.propertyPath)] = position;
+            }
+            // TODO: Can we access the mouse position by some other means? Won't be up to date
+            // if the drawer isnt receiving gui updates, which means theres a delay before const
+            // repainting kicks in again after mousing over the total rect.
+            _lastMousePos = e.mousePosition;
+
             if (label != GUIContent.none)
             {
                 position = EditorGUI.PrefixLabel(position, label);
