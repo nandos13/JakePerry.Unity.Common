@@ -851,6 +851,8 @@ namespace JakePerry.Unity.Events
                         Debug.Assert(invocationTarget is UnityEngine.Object);
                         declaringType = invocationTarget.GetType();
                     }
+                    
+                    //AdvancedModalWindow.ShowModalDropdown(rect);
 
                     BuildMemberPopupList(declaringType, currentMethod, @static).DropDown(rect);
                 }
