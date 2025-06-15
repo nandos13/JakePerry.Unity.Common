@@ -1,3 +1,4 @@
+using JakePerry.Reflection;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -23,17 +24,19 @@ namespace JakePerry.Unity
         {
             propertyDrawer = null;
 
-            var scriptAttributeUtilityType = ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.ScriptAttributeUtility");
-            var getHandlerMethod = ReflectionEx.GetMethod(scriptAttributeUtilityType, "GetHandler", kFlags, new ParamsArray<Type>(typeof(SerializedProperty)));
+            Type scriptAttributeUtilityType = ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.ScriptAttributeUtility");
+            MethodInfo getHandlerMethod = ReflectionEx.GetMethod(scriptAttributeUtilityType, "GetHandler", kFlags, new ParamsArray<Type>(typeof(SerializedProperty)));
 
-            var args = ReflectionEx.RentArrayWithArguments(property);
-            var handle = getHandlerMethod.Invoke(null, args);
-            ReflectionEx.ReturnArray(args);
+            object handle;
+            using (ReflectionEx.RentArrayWithArgsInScope(out object[] args, property))
+            {
+                handle = getHandlerMethod.Invoke(null, args);
+            }
 
             if (handle is not null)
             {
-                var propertyHandlerType = ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.PropertyHandler");
-                var propertyDrawerProperty = ReflectionEx.GetProperty(propertyHandlerType, "propertyDrawer", kFlags);
+                Type propertyHandlerType = ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.PropertyHandler");
+                PropertyInfo propertyDrawerProperty = ReflectionEx.GetProperty(propertyHandlerType, "propertyDrawer", kFlags);
 
                 propertyDrawer = propertyDrawerProperty.GetValue(handle);
             }
@@ -42,10 +45,10 @@ namespace JakePerry.Unity
 
         private static bool AnyPropertyDrawerWantsRepaint(Editor editor)
         {
-            var sObj = editor.serializedObject;
+            SerializedObject sObj = editor.serializedObject;
             sObj.UpdateIfRequiredOrScript();
 
-            var iterator = sObj.GetIterator();
+            SerializedProperty iterator = sObj.GetIterator();
             bool enterChildren = true;
             while (iterator.NextVisible(enterChildren))
             {
@@ -56,16 +59,17 @@ namespace JakePerry.Unity
                     continue;
                 }
 
-                if (_attributeLookup.TryGetValue(propertyDrawer.GetType(), out var method))
+                if (_attributeLookup.TryGetValue(propertyDrawer.GetType(), out MethodInfo method))
                 {
                     bool wantsRepaint = true;
                     if (method is not null)
                     {
                         if (method.GetParameters().Length > 0)
                         {
-                            var args = ReflectionEx.RentArrayWithArguments(sObj);
-                            wantsRepaint = (bool)method.Invoke(propertyDrawer, args);
-                            ReflectionEx.ReturnArray(args);
+                            using (ReflectionEx.RentArrayWithArgsInScope(out object[] args, sObj))
+                            {
+                                wantsRepaint = (bool)method.Invoke(propertyDrawer, args);
+                            }
                         }
                         else
                         {
@@ -89,23 +93,23 @@ namespace JakePerry.Unity
              * Honestly I don't know the significance of the 'kDelta' value,
              * but if it works for Unity, it'll be fine here.
              */
-            var time = EditorApplication.timeSinceStartup;
+            double time = EditorApplication.timeSinceStartup;
             if (_lastRepaintTime + kDelta >= time)
             {
                 return;
             }
             _lastRepaintTime = time;
 
-            var genericInspectorType = ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.GenericInspector");
+            Type genericInspectorType = ReflectionEx.GetType(typeof(Editor).Assembly, "UnityEditor.GenericInspector");
 
-            foreach (var editor in ActiveEditorTracker.sharedTracker.activeEditors)
+            foreach (Editor editor in ActiveEditorTracker.sharedTracker.activeEditors)
                 if (genericInspectorType.IsAssignableFrom(editor.GetType()) &&
                     AnyPropertyDrawerWantsRepaint(editor))
                 {
                     editor.Repaint();
                 }
 
-            var focusWindow = EditorWindow.focusedWindow;
+            EditorWindow focusWindow = EditorWindow.focusedWindow;
             if (focusWindow != null)
             {
                 bool wantsRepaint = false;
@@ -137,13 +141,13 @@ namespace JakePerry.Unity
             EditorApplication.update -= EditorUpdate;
             EditorApplication.update += EditorUpdate;
 
-            var dict = _attributeLookup;
+            Dictionary<Type, MethodInfo> dict = _attributeLookup;
             dict.Clear();
 
-            foreach (var t in TypeCache.GetTypesWithAttribute<RequiresConstantRepaintAttribute>())
+            foreach (Type t in TypeCache.GetTypesWithAttribute<RequiresConstantRepaintAttribute>())
             {
                 var attr = t.GetCustomAttribute<RequiresConstantRepaintAttribute>();
-                var methodName = attr.If;
+                string methodName = attr.If;
 
                 MethodInfo method = null;
                 if (!string.IsNullOrEmpty(methodName))
@@ -155,7 +159,7 @@ namespace JakePerry.Unity
 
                         if (isPropDrawer && method is null)
                         {
-                            var types = new ParamsArray<Type>(typeof(SerializedObject));
+                            ParamsArray<Type> types = new(typeof(SerializedObject));
                             method = ReflectionEx.GetMethod(t, methodName, kMethodFlags, types, throwOnError: false);
                         }
 

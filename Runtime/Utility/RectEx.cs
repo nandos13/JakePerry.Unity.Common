@@ -125,10 +125,8 @@ namespace JakePerry.Unity
 
         private static void Slice(this Rect source, int axis, int count, List<Rect> output, float spacing)
         {
-            _ = output ?? throw new ArgumentNullException(nameof(output));
-
-            if (count < 1)
-                throw new ArgumentOutOfRangeException(nameof(count));
+            Enforce.Argument(output, nameof(output)).IsNotNull();
+            Enforce.Argument(count, nameof(count)).IsGreaterThan(0);
 
             axis = axis % 2;
 
@@ -147,7 +145,7 @@ namespace JakePerry.Unity
                 var pos = source.position;
                 pos[axis] += (singleRectSize[axis] + spacing) * i;
 
-                Rect r = new Rect(pos, singleRectSize);
+                Rect r = new(pos, singleRectSize);
 
                 if (output.Count > i) output.Insert(i, r);
                 else output.Add(r);

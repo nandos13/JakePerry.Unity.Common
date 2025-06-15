@@ -61,11 +61,8 @@ namespace JakePerry.Unity
 
         internal static RuntimeSettingsBase Load(bool createIfMissing, Type type, out bool created)
         {
-            _ = type ?? throw new ArgumentNullException(nameof(type));
-            if (!typeof(RuntimeSettingsBase).IsAssignableFrom(type))
-            {
-                throw new ArgumentException(nameof(type));
-            }
+            Enforce.Argument(type, nameof(type)).IsNotNull();
+            Enforce.Argument(type, nameof(type)).IsAssignableTo(typeof(RuntimeSettingsBase));
 
             return Load_Internal(createIfMissing, type, out created);
         }

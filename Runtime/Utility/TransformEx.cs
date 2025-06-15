@@ -8,9 +8,9 @@ namespace JakePerry.Unity
     {
         public static void GetHierarchyPath(this Transform transform, StringBuilder sb, string delimeter = "/")
         {
-            _ = sb ?? throw new ArgumentNullException(nameof(sb));
+            Enforce.Argument(sb, nameof(sb)).IsNotNull();
 
-            var trs = transform;
+            Transform trs = transform;
             bool appendDelim = false;
 
             while (trs != null)
@@ -27,10 +27,10 @@ namespace JakePerry.Unity
 
         public static string GetHierarchyPath(this Transform transform, string delimeter = "/")
         {
-            var sb = StringBuilderCache.Acquire();
+            StringBuilder sb = StringBuilderCache.Acquire();
             GetHierarchyPath(transform, sb, delimeter);
 
-            return StringBuilderCache.GetStringAndRelease(sb); ;
+            return StringBuilderCache.GetStringAndRelease(sb);
         }
     }
 }

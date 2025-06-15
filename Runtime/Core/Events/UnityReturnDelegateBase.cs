@@ -5,6 +5,11 @@ using UnityEngine;
 
 namespace JakePerry.Unity.Events
 {
+    // TODO: I may want to support Action delegates later, not just funcs (essentially this
+    // would be like a 'pro' version of UnityEvent, with more features).
+    // Try to separate some of this out into two parts: 'delegates' and 'events'.
+    // Currently this class kinda does both.
+
     /// <summary>
     /// Abstract base class for UnityReturnDelegates.
     /// </summary>
@@ -170,7 +175,7 @@ namespace JakePerry.Unity.Events
                 policy = ReturnDelegatesConfig.InvocationFailedPolicy;
             }
 
-            if (policy == ErrorHandlingPolicy.LogError)
+            if (policy == ErrorHandlingPolicy.Log)
             {
                 // Special case: better logs for destroyed invocation target
                 if (exception is InvocationTargetDestroyedException)
@@ -187,7 +192,7 @@ namespace JakePerry.Unity.Events
                     Debug.LogException(exception);
                 }
             }
-            else if (policy == ErrorHandlingPolicy.ThrowException)
+            else if (policy == ErrorHandlingPolicy.Throw)
             {
                 if (exception is InvokeFailedException)
                 {
@@ -206,6 +211,15 @@ namespace JakePerry.Unity.Events
 
         private MethodInfo FindMethod(Type targetType)
         {
+            // TODO: Idea for simplification...
+            // Current implementation serializes an array of InvocationArgument, and each item
+            // is responsible for telling us what type it is.
+            // For cases where a subclass is serialized (ie. it will use a ParameterTypedArgument obj),
+            // we also serialize the type.
+            // This means the target method's parameter type is directly coupled with the invocation value.
+            // I think it may be beneficial to abstract this out to a second array. It means there's an extra
+            // error case to handle if they get out of sync, but it will be decoupled.
+
             Type[] argTypes;
             if (m_argumentsDefinedByEvent)
             {
@@ -245,7 +259,7 @@ namespace JakePerry.Unity.Events
                                     "\nSerialized type name: " +
                                     args[i].Debug_GetSerializedTypeName();
 
-                                if (policy == ErrorHandlingPolicy.LogError)
+                                if (policy == ErrorHandlingPolicy.Log)
                                 {
                                     ReturnDelegatesUtility.LogError(err);
                                 }

@@ -1,3 +1,4 @@
+using JakePerry.Reflection;
 using System;
 using System.Reflection;
 
@@ -60,25 +61,22 @@ namespace JakePerry.Unity
                 const BindingFlags kFlags = BindingFlags.Static | BindingFlags.Public;
                 const string kMethodName = nameof(CastUnityObjectToInterface);
 
-                var targetProperty = GetTargetObjectProperty(property);
-                var targetObj = targetProperty.objectReferenceValue;
+                SerializedProperty targetProperty = GetTargetObjectProperty(property);
+                UnityEngine.Object targetObj = targetProperty.objectReferenceValue;
 
                 // We can exit early if the target object is not assigned
-                if (UnityHelper.IsUnassigned(targetObj)) return null;
+                if (UnityHelper.GetObjectState(targetObj).IsNull) return null;
 
-                var args = new ParamsArray<Type>(typeof(UnityEngine.Object));
-                var method = ReflectionEx.GetMethod(typeof(InspectableInterface), kMethodName, kFlags, args);
+                ParamsArray<Type> args = new(typeof(UnityEngine.Object));
+                MethodInfo method = ReflectionEx.GetMethod(typeof(InspectableInterface), kMethodName, kFlags, args);
 
                 args = new ParamsArray<Type>(interfaceType);
                 method = ReflectionEx.MakeGenericMethod(method, args);
 
-                var args2 = ReflectionEx.RentArrayWithArguments(targetObj);
-
-                var result = method.Invoke(null, args2);
-
-                ReflectionEx.ReturnArray(args2);
-
-                return result;
+                using (ReflectionEx.RentArrayWithArgsInScope(out object[] args2, targetObj))
+                {
+                    return method.Invoke(null, args2);
+                }
             }
 
             /// <summary>
@@ -91,11 +89,10 @@ namespace JakePerry.Unity
             /// </returns>
             public static UnityEngine.Object GetTargetObject(SerializedProperty property)
             {
-                var targetProperty = GetTargetObjectProperty(property);
+                SerializedProperty targetProperty = GetTargetObjectProperty(property);
                 return targetProperty.objectReferenceValue;
             }
         }
     }
 #endif // UNITY_EDITOR
 }
-

@@ -1,5 +1,8 @@
 using JakePerry.Debugging;
+using System;
 using UnityEngine;
+
+using StackTrace = System.Diagnostics.StackTrace;
 
 namespace JakePerry.Unity.Debugging
 {
@@ -28,9 +31,24 @@ namespace JakePerry.Unity.Debugging
             HandleLog(trace, true, message);
         }
 
+        void IDebugImpl.LogError(StackTrace trace, string message)
+        {
+            var stackTrace = trace?.ToString();
+            if (stackTrace is not null)
+            {
+                message = string.Concat(message, ",\n", stackTrace);
+            }
+            HandleLog(false, true, message);
+        }
+
         void IDebugImpl.LogInfo(bool trace, string message)
         {
             HandleLog(trace, false, message);
+        }
+
+        void IDebugImpl.LogException(Exception exception)
+        {
+            Debug.LogException(exception);
         }
 
 #if UNITY_EDITOR

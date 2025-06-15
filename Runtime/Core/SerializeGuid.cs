@@ -4,6 +4,7 @@ using UnityEngine;
 
 namespace JakePerry.Unity
 {
+    // TODO: Kill this class and replace it with PackedGuid from the non-unity package.
     [Serializable]
     [StructLayout(LayoutKind.Explicit)]
     public partial struct SerializeGuid :

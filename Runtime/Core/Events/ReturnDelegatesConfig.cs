@@ -18,6 +18,6 @@ namespace JakePerry.Unity.Events
         internal static bool ErrorLoggingEnabled => Cfg.m_errorLoggingEnabled;
 
         internal static ErrorHandlingPolicy InvocationFailedPolicy =>
-            Cfg.m_invocationFailurePolicy.OrFallback(ErrorHandlingPolicy.LogError);
+            Cfg.m_invocationFailurePolicy.OrFallback(ErrorHandlingPolicy.Log);
     }
 }

@@ -15,7 +15,9 @@ namespace JakePerry.Unity.Events
 
         protected RuntimeInvocableCall(object target, MethodInfo method)
         {
-            m_method = method ?? throw new ArgumentNullException(nameof(method));
+            Enforce.Argument(method, nameof(method)).IsNotNull();
+
+            m_method = method;
 
             if (method.IsStatic)
             {
@@ -26,7 +28,7 @@ namespace JakePerry.Unity.Events
             }
             else
             {
-                _ = target ?? throw new ArgumentNullException(nameof(target));
+                Enforce.Argument(target, nameof(target)).IsNotNull();
             }
 
             m_target = target;
@@ -77,7 +79,7 @@ namespace JakePerry.Unity.Events
         /// </exception>
         internal object Invoke(object[] args)
         {
-            _ = args ?? throw new ArgumentNullException(nameof(args));
+            Enforce.Argument(args, nameof(args)).IsNotNull();
 
             if (!PreInvoke(out var ex)) throw ex;
 

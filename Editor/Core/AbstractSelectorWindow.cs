@@ -1,4 +1,5 @@
 using JakePerry.Collections;
+using JakePerry.Reflection;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -104,11 +105,11 @@ namespace JakePerry.Unity
             {
                 Event e = EditorGUIUtility.CommandEvent(eventName);
 
-                var parameterTypes = new ParamsArray<Type>(typeof(Event));
-                var method = ReflectionEx.GetMethod(GUIViewType, "SendEvent", kFlags, parameterTypes);
+                ParamsArray<Type> parameterTypes = new(typeof(Event));
+                MethodInfo method = ReflectionEx.GetMethod(GUIViewType, "SendEvent", kFlags, parameterTypes);
 
-                var args = ReflectionEx.RentArrayWithArguments(e);
-
+                using var scope = ReflectionEx.RentArrayWithArgsInScope(out object[] args, e);
+                
                 try
                 {
                     _sendEventControlId = m_controlId;
@@ -116,8 +117,6 @@ namespace JakePerry.Unity
                     method.Invoke(m_delegateView, args);
                 }
                 finally { _sendEventControlId = null; }
-
-                ReflectionEx.ReturnArray(args);
             }
         }
 
@@ -144,7 +143,7 @@ namespace JakePerry.Unity
         protected static T ShowWindow<T>(int controlId)
             where T : AbstractSelectorWindow
         {
-            var inst = GetSharedInstance<T>();
+            T inst = GetSharedInstance<T>();
 
             inst.m_delegateView = CurrentGUIView;
             inst.m_controlId = controlId;
@@ -156,18 +155,18 @@ namespace JakePerry.Unity
 
         private void DrawSearchBar()
         {
-            var rect = EditorGUILayout.GetControlRect(GUILayout.Height(LineHeight + 8));
+            Rect rect = EditorGUILayout.GetControlRect(GUILayout.Height(LineHeight + 8));
             rect = rect.Pad(2, 2, 5, 5);
 
-            var labelRect = rect;
+            Rect labelRect = rect;
             labelRect.width = 70f;
             rect = rect.PadLeft(labelRect.width + 20f);
 
             EditorGUI.LabelField(labelRect, "Search:", SearchLabelStyle);
 
-            var textRect = rect;
+            Rect textRect = rect;
 
-            var style = SearchBarStyle;
+            GUIStyle style = SearchBarStyle;
 
             EditorGUI.BeginChangeCheck();
             {
@@ -181,7 +180,7 @@ namespace JakePerry.Unity
                 if (!string.IsNullOrWhiteSpace(m_searchFilter))
                 {
                     using var scope = ListPool.RentInScope(out List<Substring> splits);
-                    Substring.Split(m_searchFilter, " ", splits, StringSplitOptions.RemoveEmptyEntries);
+                    new Substring(m_searchFilter, 0).Split(splits, ' ', options: StringSplitOptions.RemoveEmptyEntries);
                     m_searchWords.AddRange(splits);
                 }
                 else

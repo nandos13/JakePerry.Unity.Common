@@ -14,7 +14,7 @@ namespace JakePerry.Unity
     public struct Color24 : IFormattable
     {
         [FieldOffset(0)]
-        private ushort rg;
+        private readonly ushort rg;
 
         /// <summary>
         /// Red component of the color.
@@ -40,7 +40,7 @@ namespace JakePerry.Unity
         public static Color24 Black
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => new Color24(0);
+            get => new(0);
         }
 
         /// <summary>
@@ -49,7 +49,7 @@ namespace JakePerry.Unity
         public static Color24 White
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => new Color24(255);
+            get => new(255);
         }
 
         /// <summary>
@@ -58,7 +58,7 @@ namespace JakePerry.Unity
         public static Color24 Grey
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => new Color24(127);
+            get => new(127);
         }
 
         /// <summary>
@@ -67,7 +67,7 @@ namespace JakePerry.Unity
         public static Color24 Red
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => new Color24(255, 0, 0);
+            get => new(255, 0, 0);
         }
 
         /// <summary>
@@ -76,7 +76,7 @@ namespace JakePerry.Unity
         public static Color24 Green
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => new Color24(0, 255, 0);
+            get => new(0, 255, 0);
         }
 
         /// <summary>
@@ -85,7 +85,7 @@ namespace JakePerry.Unity
         public static Color24 Blue
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => new Color24(0, 0, 255);
+            get => new(0, 0, 255);
         }
 
         /// <summary>
@@ -94,7 +94,7 @@ namespace JakePerry.Unity
         public static Color24 Yellow
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => new Color24(255, 255, 0);
+            get => new(255, 255, 0);
         }
 
         /// <summary>
@@ -103,7 +103,7 @@ namespace JakePerry.Unity
         public static Color24 Magenta
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => new Color24(255, 0, 255);
+            get => new(255, 0, 255);
         }
 
         /// <summary>
@@ -112,12 +112,12 @@ namespace JakePerry.Unity
         public static Color24 Cyan
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => new Color24(0, 255, 255);
+            get => new(0, 255, 255);
         }
 
         public byte this[int index]
         {
-            get
+            readonly get
             {
                 return index switch
                 {
@@ -154,29 +154,29 @@ namespace JakePerry.Unity
             this.b = b;
         }
 
-        public bool Equals(Color24 c)
+        public readonly bool Equals(Color24 c)
         {
             return rg == c.rg && b == c.b;
         }
 
-        public override bool Equals(object obj)
+        public readonly override bool Equals(object obj)
         {
             if (obj is Color24 c24) return this.Equals(c24);
             if (obj is Color32 c32) return this.Equals((Color24)c32);
             return false;
         }
 
-        public override int GetHashCode()
+        public readonly override int GetHashCode()
         {
             return HashCode.Combine(rg, b);
         }
 
-        public Color32 ToColor32(byte alpha = 255)
+        public readonly Color32 ToColor32(byte alpha = 255)
         {
             return new Color32(r, g, b, alpha);
         }
 
-        public string ToString(string format, IFormatProvider formatProvider)
+        public readonly string ToString(string format, IFormatProvider formatProvider)
         {
             formatProvider ??= CultureInfo.InvariantCulture.NumberFormat;
 
@@ -192,12 +192,12 @@ namespace JakePerry.Unity
             return StringBuilderCache.GetStringAndRelease(sb);
         }
 
-        public string ToString(string format)
+        public readonly string ToString(string format)
         {
             return ToString(format, null);
         }
 
-        public override string ToString()
+        public readonly override string ToString()
         {
             return ToString(null, null);
         }

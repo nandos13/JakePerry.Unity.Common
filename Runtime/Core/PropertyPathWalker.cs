@@ -1,3 +1,4 @@
+using JakePerry.Reflection;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -45,18 +46,6 @@ namespace JakePerry.Unity
                 this.propertyIndex = propertyIndex;
                 this.target = target;
                 this.value = value;
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void CheckArguments(object rootObject, string path)
-        {
-            _ = rootObject ?? throw new ArgumentNullException(nameof(rootObject));
-            _ = path ?? throw new ArgumentNullException(nameof(path));
-
-            if (path.Length == 0)
-            {
-                throw new ArgumentException("String is empty.", nameof(path));
             }
         }
 
@@ -214,7 +203,8 @@ namespace JakePerry.Unity
         /// </returns>
         public static ValueMemberInfo GetFieldOrProperty(object rootObject, string path)
         {
-            CheckArguments(rootObject, path);
+            Enforce.Argument(rootObject, nameof(rootObject)).IsNotNull();
+            Enforce.Argument(path, nameof(path)).IsNotNullOrEmpty();
 
             using var scope = ListPool.RentInScope(out List<Capture> list);
             ResolveStack(rootObject, path, list);
@@ -239,7 +229,8 @@ namespace JakePerry.Unity
         /// <inheritdoc cref="GetFieldOrProperty(object, string)"/>
         public static object GetValue(object rootObject, string path)
         {
-            CheckArguments(rootObject, path);
+            Enforce.Argument(rootObject, nameof(rootObject)).IsNotNull();
+            Enforce.Argument(path, nameof(path)).IsNotNullOrEmpty();
 
             using var scope = ListPool.RentInScope(out List<Capture> list);
             ResolveStack(rootObject, path, list);
@@ -296,7 +287,9 @@ namespace JakePerry.Unity
         /// <param name="value">The value to be set.</param>
         public static void SetValue(object rootObject, string path, object value)
         {
-            CheckArguments(rootObject, path);
+            Enforce.Argument(rootObject, nameof(rootObject)).IsNotNull();
+            Enforce.Argument(path, nameof(path)).IsNotNullOrEmpty();
+
             SetValueInternal(rootObject, path, value);
         }
 
@@ -308,7 +301,9 @@ namespace JakePerry.Unity
         /// <param name="path">The property path to query.</param>
         public static void SetDefaultValue(object rootObject, string path)
         {
-            CheckArguments(rootObject, path);
+            Enforce.Argument(rootObject, nameof(rootObject)).IsNotNull();
+            Enforce.Argument(path, nameof(path)).IsNotNullOrEmpty();
+
             SetValueInternal(rootObject, path, _setDefaultValIdentifier);
         }
 
@@ -317,9 +312,10 @@ namespace JakePerry.Unity
         /// <inheritdoc cref="GetFieldOrProperty(object, string)"/>
         public static ValueMemberInfo GetFieldOrProperty(SerializedProperty property)
         {
-            _ = property ?? throw new ArgumentNullException(nameof(property));
-            var rootObject = property.serializedObject.targetObject;
-            var path = property.propertyPath;
+            Enforce.Argument(property, nameof(property)).IsNotNull();
+
+            UnityEngine.Object rootObject = property.serializedObject.targetObject;
+            string path = property.propertyPath;
 
             return GetFieldOrProperty(rootObject, path);
         }
@@ -327,9 +323,10 @@ namespace JakePerry.Unity
         /// <inheritdoc cref="GetValue(object, string)"/>
         public static object GetValue(SerializedProperty property)
         {
-            _ = property ?? throw new ArgumentNullException(nameof(property));
-            var rootObject = property.serializedObject.targetObject;
-            var path = property.propertyPath;
+            Enforce.Argument(property, nameof(property)).IsNotNull();
+
+            UnityEngine.Object rootObject = property.serializedObject.targetObject;
+            string path = property.propertyPath;
 
             return GetValue(rootObject, path);
         }
@@ -341,9 +338,10 @@ namespace JakePerry.Unity
         /// </param>
         public static void SetValue(SerializedProperty property, object value, bool dirty = true)
         {
-            _ = property ?? throw new ArgumentNullException(nameof(property));
-            var rootObject = property.serializedObject.targetObject;
-            var path = property.propertyPath;
+            Enforce.Argument(property, nameof(property)).IsNotNull();
+
+            UnityEngine.Object rootObject = property.serializedObject.targetObject;
+            string path = property.propertyPath;
 
             SetValue(rootObject, path, value);
 
@@ -360,9 +358,10 @@ namespace JakePerry.Unity
         /// </param>
         public static void SetDefaultValue(SerializedProperty property, bool dirty = true)
         {
-            _ = property ?? throw new ArgumentNullException(nameof(property));
-            var rootObject = property.serializedObject.targetObject;
-            var path = property.propertyPath;
+            Enforce.Argument(property, nameof(property)).IsNotNull();
+
+            UnityEngine.Object rootObject = property.serializedObject.targetObject;
+            string path = property.propertyPath;
 
             SetDefaultValue(rootObject, path);
 

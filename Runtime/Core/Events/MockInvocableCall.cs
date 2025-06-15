@@ -15,7 +15,7 @@ namespace JakePerry.Unity.Events
 
         object IInvocableCall.Invoke(object[] args)
         {
-            _ = args ?? throw new ArgumentNullException(nameof(args));
+            Enforce.Argument(args, nameof(args)).IsNotNull();
             return m_result;
         }
     }

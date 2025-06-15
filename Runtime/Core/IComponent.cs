@@ -31,7 +31,7 @@ namespace JakePerry.Unity
         /// </summary>
         public static Component ToComponent(this IComponent component)
         {
-            _ = component ?? throw new ArgumentNullException(nameof(component));
+            Enforce.Argument(component, nameof(component)).IsNotNull();
 
             if (component is Component c)
                 return c;

@@ -27,11 +27,8 @@ namespace JakePerry.Unity.Events
         {
             const BindingFlags kFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-            _ = t ?? throw new ArgumentNullException(nameof(t));
-            if (!typeof(SerializableMethodArgument).IsAssignableFrom(t))
-            {
-                throw new ArgumentException(nameof(t));
-            }
+            Enforce.Argument(t, nameof(t)).IsNotNull();
+            Enforce.Argument(t, nameof(t)).IsAssignableTo(typeof(SerializableMethodArgument));
 
             if (!_invocationArgValueFieldCache.TryGetValue(t, out var field))
             {

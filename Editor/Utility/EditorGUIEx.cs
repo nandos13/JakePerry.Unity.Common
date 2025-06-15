@@ -1,3 +1,4 @@
+using JakePerry.Reflection;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -145,7 +146,7 @@ namespace JakePerry.Unity
 
         public static bool ProcessGuiClickEvent(Event e, Rect rect, int id, int mouseButton = 0)
         {
-            _ = e ?? throw new ArgumentNullException(nameof(e));
+            Enforce.Argument(e, nameof(e)).IsNotNull();
 
             if (!GUI.enabled) return false;
 

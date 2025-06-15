@@ -1,64 +1,52 @@
+using JakePerry.Reflection;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace JakePerry.Unity
 {
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Correctness", "UNT0029:Pattern matching with null on Unity objects")]
+    [SuppressMessage("CodeQuality", "IDE0079:Remove unnecessary suppression")]
     public static class UnityHelper
     {
-        /// <summary>
-        /// Determines whether <paramref name="obj"/> is unassigned - that is,
-        /// if it is a <see langword="null"/> reference.
-        /// This method also checks for Unity's "fake" objects in editor (see details below).
-        /// <para/>
-        /// Any 'null' references to an <see cref="UnityEngine.Object"/> or any of its child
-        /// classes that are deserialized while running in the editor are assigned
-        /// a fake object instance. This fake object allows Unity to alert the user if they attempt to
-        /// access the referenced object with this undoubtedly familiar message:
-        /// <para/>
-        /// <c>The variable *Variable* of *Script* has not been assigned. You probably need
-        /// to assign the *Variable* variable of the *Script* script in the inspector.</c>
-        /// </summary>
-        /// <param name="obj">
-        /// The object reference to be checked.
-        /// </param>
-        /// <returns>
-        /// <see langword="true"/> if the object is unassigned, per the summary above;
-        /// Otherwise, <see langword="false"/>.
-        /// </returns>
-        public static bool IsUnassigned(UnityEngine.Object obj)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [SuppressMessage("Correctness", "UNT0029")]
+        private static bool IsNullReference(UnityEngine.Object obj)
         {
-            if (obj is null) return true;
-
-#if UNITY_EDITOR
-            if (obj.GetInstanceID() == 0) return true;
-#endif // UNITY_EDITOR
-
-            return false;
+            return obj is null;
         }
 
         /// <summary>
-        /// Check that an argument is not null or destroyed.
+        /// Evaluates the current state of the object <paramref name="obj"/>.
         /// </summary>
-        /// <param name="obj">
-        /// The argument to be checked.
+        /// <param name="evaluateUnassignedRef">
+        /// <i>Used in editor only.</i>
+        /// Determines the return value of this method when <paramref name="obj"/> is an unassigned reference.
+        /// <para/>
+        /// If set to <see langword="true"/>, this method returns <see cref="UnityObjectState.UnassignedReference"/>;
+        /// Otherwise it returns <see cref="UnityObjectState.NullReference"/>.
         /// </param>
-        /// <param name="paramName">
-        /// Name of the argument being checked.
-        /// </param>
-        /// <exception cref="ArgumentNullException">
-        /// Thrown if <paramref name="obj"/> is a null reference (unassigned).
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// Thrown if <paramref name="obj"/> is destroyed.
-        /// </exception>
-        public static void CheckArgument(UnityEngine.Object obj, string paramName)
+        public static UnityObjectState GetObjectState(UnityEngine.Object obj, bool evaluateUnassignedRef = false)
         {
-            if (obj is null)
-                throw new ArgumentNullException(paramName);
+            if (IsNullReference(obj)) return UnityObjectState.NullReference;
 
+            // If the object evaluates to null here, it is either a destroyed object,
+            // or it is a deserialized unassigned reference (editor only).
             if (obj == null)
-                throw new ArgumentException($"Object is destroyed.", paramName);
+            {
+#if UNITY_EDITOR
+                if (obj.GetInstanceID() == 0)
+                {
+                    return evaluateUnassignedRef
+                        ? UnityObjectState.UnassignedReference
+                        : UnityObjectState.NullReference;
+                }
+#endif
+
+                return UnityObjectState.DestroyedObject;
+            }
+
+            return UnityObjectState.ValidObject;
         }
 
         public static bool DoesObjectWithInstanceIDExist(int id)
@@ -66,13 +54,12 @@ namespace JakePerry.Unity
             const BindingFlags kFlags = (BindingFlags)0x28;
             const string kMethodName = "DoesObjectWithInstanceIDExist";
 
-            var method = ReflectionEx.GetMethod(typeof(UnityEngine.Object), kMethodName, kFlags, new ParamsArray<Type>(typeof(int)));
+            MethodInfo method = ReflectionEx.GetMethod(typeof(UnityEngine.Object), kMethodName, kFlags, new ParamsArray<Type>(typeof(int)));
 
-            var args = ReflectionEx.RentArrayWithArguments(id);
-            bool result = (bool)method.Invoke(null, args);
-
-            ReflectionEx.ReturnArray(args);
-            return result;
+            using (ReflectionEx.RentArrayWithArgsInScope(out object[] args, id))
+            {
+                return (bool)method.Invoke(null, args);
+            }
         }
 
         /// <summary>
@@ -86,13 +73,12 @@ namespace JakePerry.Unity
             const BindingFlags kFlags = (BindingFlags)0x28;
             const string kMethodName = "FindObjectFromInstanceID";
 
-            var method = ReflectionEx.GetMethod(typeof(UnityEngine.Object), kMethodName, kFlags, new ParamsArray<Type>(typeof(int)));
+            MethodInfo method = ReflectionEx.GetMethod(typeof(UnityEngine.Object), kMethodName, kFlags, new ParamsArray<Type>(typeof(int)));
 
-            var args = ReflectionEx.RentArrayWithArguments(id);
-            var result = method.Invoke(null, args) is T o ? o : null;
-
-            ReflectionEx.ReturnArray(args);
-            return result;
+            using (ReflectionEx.RentArrayWithArgsInScope(out object[] args, id))
+            {
+                return method.Invoke(null, args) is T o ? o : null;
+            }
         }
 
         /// <inheritdoc cref="FindObjectFromInstanceId{T}(int)"/>

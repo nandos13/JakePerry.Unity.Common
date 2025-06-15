@@ -33,7 +33,7 @@ namespace JakePerry.Unity
         /// </summary>
         public static UnityEngine.Object ToUnityObject(this IUnityObject obj)
         {
-            _ = obj ?? throw new ArgumentNullException(nameof(obj));
+            Enforce.Argument(obj, nameof(obj)).IsNotNull();
 
             if (obj is UnityEngine.Object o)
                 return o;

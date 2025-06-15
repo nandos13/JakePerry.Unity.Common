@@ -40,7 +40,7 @@ namespace JakePerry.Unity
             bool isUserSettings)
             : this(path, isUserSettings)
         {
-            UnityHelper.CheckArgument(target, nameof(target));
+            Enforce.Argument(target, nameof(target)).IsNotNull();
 
             m_targets = new ScriptableObject[1] { target };
             m_editors = new Editor[1];
@@ -56,7 +56,7 @@ namespace JakePerry.Unity
             bool isUserSettings)
             : this(path, isUserSettings)
         {
-            if (targets == default) throw new ArgumentNullException(nameof(targets));
+            Enforce.Argument(targets, nameof(targets)).IsInValidState();
 
             m_targets = targets.Copy();
             m_editors = new Editor[m_targets.Length];
@@ -72,7 +72,7 @@ namespace JakePerry.Unity
             bool isUserSettings)
             : this(path, isUserSettings)
         {
-            if (targets == default) throw new ArgumentNullException(nameof(targets));
+            Enforce.Argument(targets, nameof(targets)).IsInValidState();
 
             m_targets = targets.ToArray();
             m_editors = new Editor[m_targets.Length];
@@ -99,7 +99,7 @@ namespace JakePerry.Unity
             {
                 if (m_targets.Length == 1)
                 {
-                    var sObj = new SerializedObject(m_targets[0]);
+                    SerializedObject sObj = new(m_targets[0]);
                     keywords = GetSearchKeywordsFromSerializedObject(sObj);
                 }
                 else
@@ -107,7 +107,7 @@ namespace JakePerry.Unity
                     var list = new DistinctList<string>(StringComparer.Ordinal);
                     foreach (var target in m_targets)
                     {
-                        var sObj = new SerializedObject(target);
+                        SerializedObject sObj = new(target);
                         list.AddRange(GetSearchKeywordsFromSerializedObject(sObj));
                     }
 
@@ -122,7 +122,7 @@ namespace JakePerry.Unity
 
         public override void OnGUI(string searchContext)
         {
-            var labelWidth = EditorGUIUtility.labelWidth;
+            float labelWidth = EditorGUIUtility.labelWidth;
 
             // Match other settings windows
             EditorGUIUtility.labelWidth = 250;
@@ -135,12 +135,12 @@ namespace JakePerry.Unity
                     int count = m_targets.Length;
                     for (int i = 0; i < count; ++i)
                     {
-                        var target = m_targets[i];
+                        ScriptableObject target = m_targets[i];
                         if (target == null) continue;
 
                         GUILayout.Space(14);
 
-                        var editor = m_editors[i];
+                        Editor editor = m_editors[i];
                         if (editor == null)
                         {
                             editor = Editor.CreateEditor(target);
