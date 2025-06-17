@@ -8,15 +8,15 @@ namespace JakePerry.Unity
 {
     public static class ResourceGuidManifestEditorUtil
     {
-        const string kAssetsPath = Project.kGeneratedAssetsDir + "Resources/" + ResourceGuidManifest.kResourcesPath + ".asset";
+        const string kAssetsPath = Project.kGeneratedAssetsDir + "Resources/" + ResourceGuidManifest.ResourcesPath + ".asset";
 
         internal static ResourceGuidManifest GetOrCreateManifestAsset()
         {
-            var manifest = AssetDatabase.LoadAssetAtPath<ResourceGuidManifest>(kAssetsPath);
+            ResourceGuidManifest manifest = AssetDatabase.LoadAssetAtPath<ResourceGuidManifest>(kAssetsPath);
 
             if (manifest == null)
             {
-                var manifestPathOnDisk = Path.Combine(Project.GetProjectPath(), kAssetsPath);
+                string manifestPathOnDisk = Path.Combine(Project.GetProjectPath(), kAssetsPath);
                 new FileInfo(manifestPathOnDisk).Directory.Create();
 
                 manifest = ScriptableObject.CreateInstance<ResourceGuidManifest>();
@@ -31,18 +31,18 @@ namespace JakePerry.Unity
         [MenuItem(Project.kContextMenuItemsPath + "Generate/Resources GUID Cache")]
         public static void GenerateResourceGuidManifest()
         {
-            var pairs = new List<(SerializeGuid, string)>();
+            List<(Guid, string)> pairs = new();
 
-            foreach (var path in AssetDatabase.GetAllAssetPaths())
+            foreach (string path in AssetDatabase.GetAllAssetPaths())
             {
                 if (ResourcesEx.TryGetResourcesPath(path, out string resourcePath))
                 {
-                    var guid = Guid.ParseExact(AssetDatabase.GUIDFromAssetPath(path).ToString(), "N");
-                    pairs.Add(((SerializeGuid)guid, resourcePath));
+                    Guid guid = Guid.ParseExact(AssetDatabase.GUIDFromAssetPath(path).ToString(), "N");
+                    pairs.Add((guid, resourcePath));
                 }
             }
 
-            var manifest = GetOrCreateManifestAsset();
+            ResourceGuidManifest manifest = GetOrCreateManifestAsset();
             manifest.Editor_SetCache(pairs);
 
             EditorUtility.SetDirty(manifest);

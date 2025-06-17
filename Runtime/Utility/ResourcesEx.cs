@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace JakePerry.Unity
@@ -11,7 +12,7 @@ namespace JakePerry.Unity
             if (string.IsNullOrEmpty(path))
                 return false;
 
-            var resourcesIndex = path.LastIndexOf(kResourcesDir);
+            int resourcesIndex = path.LastIndexOf(kResourcesDir);
             return resourcesIndex > -1
                 && resourcesIndex < path.Length - kResourcesDir.Length;
         }
@@ -66,10 +67,10 @@ namespace JakePerry.Unity
         /// </summary>
         /// <typeparam name="T">Resource type.</typeparam>
         /// <param name="guid">Guid of the resource asset.</param>
-        public static T Load<T>(SerializeGuid guid)
+        public static T Load<T>(Guid guid)
             where T : UnityEngine.Object
         {
-            if (guid.IsDefault) return null;
+            if (((PackedGuid)guid).IsDefaultValue) return null;
 
             if (ResourceGuidManifest.TryGetResourcePath(guid, out string resourcePath))
             {
@@ -82,18 +83,18 @@ namespace JakePerry.Unity
         /// <summary>
         /// Load an asset with the given guid via the <see cref="Resources"/> API.
         /// </summary>
-        /// <inheritdoc cref="Load{T}(SerializeGuid)"/>
-        public static UnityEngine.Object Load(SerializeGuid guid) => Load<UnityEngine.Object>(guid);
+        /// <inheritdoc cref="Load{T}(PackedGuid)"/>
+        public static UnityEngine.Object Load(Guid guid) => Load<UnityEngine.Object>(guid);
 
         /// <summary>
         /// Attempt to load an asset of the given type with the given guid via the <see cref="Resources"/> API.
         /// </summary>
-        /// <inheritdoc cref="Load{T}(SerializeGuid)"/>
+        /// <inheritdoc cref="Load{T}(PackedGuid)"/>
         /// <param name="resource">The loaded resource, if one was loaded.</param>
         /// <returns>
         /// <see langword="true"/> if a resource was successfully loaded; Otherwise, <see langword="false"/>.
         /// </returns>
-        public static bool TryLoad<T>(SerializeGuid guid, out T resource)
+        public static bool TryLoad<T>(Guid guid, out T resource)
             where T : UnityEngine.Object
         {
             resource = Load<T>(guid);
@@ -103,8 +104,8 @@ namespace JakePerry.Unity
         /// <summary>
         /// Attempt to load an asset with the given guid via the <see cref="Resources"/> API.
         /// </summary>
-        /// <inheritdoc cref="TryLoad{T}(SerializeGuid, out T)"/>
-        public static bool TryLoad(SerializeGuid guid, out UnityEngine.Object resource)
+        /// <inheritdoc cref="TryLoad{T}(PackedGuid, out T)"/>
+        public static bool TryLoad(Guid guid, out UnityEngine.Object resource)
         {
             return TryLoad<UnityEngine.Object>(guid, out resource);
         }

@@ -27,5 +27,19 @@ namespace JakePerry.Unity
             }
 #endif
         }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// [Editor Only] Assert that the argument is an asset contained in the project.
+        /// </summary>
+        public static void IsProjectAsset<T>(this in Enforce.ArgumentContainer<T> c)
+            where T : UnityEngine.Object
+        {
+            if (c.value == null || !UnityEditor.AssetDatabase.Contains(c.value))
+            {
+                throw new ArgumentException("Asset is not a project asset.", c.parameterName);
+            }
+        }
+#endif
     }
 }

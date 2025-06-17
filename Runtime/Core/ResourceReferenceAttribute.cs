@@ -4,7 +4,7 @@ using UnityEngine;
 namespace JakePerry.Unity
 {
     /// <summary>
-    /// Decorate a <see cref="SerializeGuid"/> field with this attribute to
+    /// Decorate a <see cref="PackedGuid"/> field with this attribute to
     /// easily assign a resource to it.
     /// </summary>
     public sealed class ResourceReferenceAttribute : PropertyAttribute

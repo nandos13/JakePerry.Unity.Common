@@ -1,24 +1,27 @@
 using System;
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace JakePerry.Unity
 {
     internal sealed class ResourceGuidManifest : ScriptableObject
     {
-        public const string kResourcesPath = "Internal/ResourceGuidManifest";
+        public const string ResourcesPath = "Internal/ResourceGuidManifest";
+
+        private static readonly ProfilerMarker _profiling_tryGetResourcePath = new(nameof(TryGetResourcePath));
 
         [Serializable]
-        private struct Pair { public SerializeGuid guid; public string path; }
+        private struct Pair { public PackedGuid guid; public string path; }
 
-        private static Dictionary<SerializeGuid, string> _lookup;
+        private static Dictionary<PackedGuid, string> _lookup;
 
         [SerializeField]
         private Pair[] m_pairs;
 
         private static ResourceGuidManifest GetInstance()
         {
-            return Resources.Load<ResourceGuidManifest>(kResourcesPath);
+            return Resources.Load<ResourceGuidManifest>(ResourcesPath);
         }
 
         private static void InitIfRequired()
@@ -31,11 +34,11 @@ namespace JakePerry.Unity
 
             if (_lookup is null)
             {
-                var inst = GetInstance();
-                var dict = new Dictionary<SerializeGuid, string>();
+                ResourceGuidManifest inst = GetInstance();
+                Dictionary<PackedGuid, string> dict = new();
 
-                if (inst != null && inst.m_pairs != null)
-                    foreach (var pair in inst.m_pairs)
+                if (inst != null && inst.m_pairs is not null)
+                    foreach (Pair pair in inst.m_pairs)
                     {
                         dict[pair.guid] = pair.path;
                     }
@@ -44,7 +47,7 @@ namespace JakePerry.Unity
             }
         }
 
-        private static bool TryGetResourcePathNoFallback(SerializeGuid guid, out string resourcePath)
+        private static bool TryGetResourcePathNoFallback(PackedGuid guid, out string resourcePath)
         {
             InitIfRequired();
             return _lookup.TryGetValue(guid, out resourcePath);
@@ -52,40 +55,41 @@ namespace JakePerry.Unity
 
 #if UNITY_EDITOR
 
-        private static bool Editor_TryGetTrueResourcePath(SerializeGuid guid, out string resourcePath)
+        private static bool Editor_TryGetTrueResourcePath(PackedGuid guid, out string resourcePath)
         {
-            if (!guid.IsDefault)
+            if (!guid.IsDefaultValue)
             {
-                var assetPath = UnityEditor.AssetDatabase.GUIDToAssetPath(guid.UnityGuidString);
+                string assetPath = UnityEditorHelper.GetProjectAssetPath(guid);
                 return ResourcesEx.TryGetResourcesPath(assetPath, out resourcePath);
             }
 
-            resourcePath = null;
-            return false;
+            return TryGet.Fail(out resourcePath);
         }
 
 #endif // UNITY_EDITOR
 
-        public static bool TryGetResourcePath(SerializeGuid guid, out string resourcePath)
+        public static bool TryGetResourcePath(Guid guid, out string resourcePath)
         {
+            using var profilingScope = _profiling_tryGetResourcePath.Auto();
+
             if (TryGetResourcePathNoFallback(guid, out resourcePath))
             {
 #if UNITY_EDITOR
 
+                using var profilingScope2 = ProfilingEx.Markers.EditorOnly.Auto();
+
                 // Editor validation: Check that the cached resource path is accurate
-                UnityEngine.Profiling.Profiler.BeginSample("[Editor Only] TryGetResourcePath");
                 if (Editor_TryGetTrueResourcePath(guid, out string editorResourcePath) &&
                     !StringComparer.Ordinal.Equals(resourcePath, editorResourcePath))
                 {
+                    string unityGuidString = UnityHelper.GetUnityGuidString(guid);
                     Debug.LogError(
-                        $"Resources manifest contains incorrect path for guid {guid.UnityGuidString}. This will cause a failure in build.\n" +
+                        $"Resources manifest contains incorrect path for guid {unityGuidString}. This will cause a failure in build.\n" +
                         $"Current path: {resourcePath}" +
                         $"Expected path: {editorResourcePath}\n");
 
-                    UnityEngine.Profiling.Profiler.EndSample();
                     return true;
                 }
-                UnityEngine.Profiling.Profiler.EndSample();
 
 #endif // UNITY_EDITOR
 
@@ -94,34 +98,34 @@ namespace JakePerry.Unity
 
 #if UNITY_EDITOR
 
-            UnityEngine.Profiling.Profiler.BeginSample("[Editor Only] TryGetResourcePath");
+            using var profilingScope3 = ProfilingEx.Markers.EditorOnly.Auto();
+
             // Editor fallback: Gracefully load resources that are not in the manifest & log an error.
             if (Editor_TryGetTrueResourcePath(guid, out resourcePath))
             {
+                string unityGuidString = UnityHelper.GetUnityGuidString(guid);
                 Debug.LogError(
-                    $"Resources manifest does not contain path for guid {guid.UnityGuidString}. This will cause a failure in build.\n" +
+                    $"Resources manifest does not contain path for guid {unityGuidString}. This will cause a failure in build.\n" +
                     $"Expected path: {resourcePath}");
 
-                UnityEngine.Profiling.Profiler.EndSample();
                 return true;
             }
-            UnityEngine.Profiling.Profiler.EndSample();
 
 #endif // UNITY_EDITOR
 
-            resourcePath = null;
-            return false;
+            return TryGet.Fail(out resourcePath);
         }
 
 #if UNITY_EDITOR
-        internal static bool Editor_TryGetResourcePathNoEditorFallback(SerializeGuid guid, out string resourcePath)
+        // TODO: EditorCode class?
+        internal static bool Editor_TryGetResourcePathNoEditorFallback(Guid guid, out string resourcePath)
         {
             return TryGetResourcePathNoFallback(guid, out resourcePath);
         }
 
-        internal void Editor_AddToCache(SerializeGuid guid, string resourcePath)
+        internal void Editor_AddToCache(Guid guid, string resourcePath)
         {
-            var pair = new Pair() { guid = guid, path = resourcePath };
+            Pair pair = new() { guid = guid, path = resourcePath };
 
             m_pairs ??= new Pair[0];
             UnityEditor.ArrayUtility.Add(ref m_pairs, pair);
@@ -130,10 +134,10 @@ namespace JakePerry.Unity
             _lookup = null;
         }
 
-        internal void Editor_SetCache(List<(SerializeGuid, string)> list)
+        internal void Editor_SetCache(List<(Guid, string)> list)
         {
             int c = list.Count;
-            var pairs = new Pair[c];
+            Pair[] pairs = new Pair[c];
 
             for (int i = 0; i < c; ++i)
             {

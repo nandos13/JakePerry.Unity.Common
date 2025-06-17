@@ -86,5 +86,34 @@ namespace JakePerry.Unity
         {
             return FindObjectFromInstanceId<UnityEngine.Object>(id);
         }
+
+        /// <summary>
+        /// Get a string representation of the <paramref name="guid"/> in the format used by Unity.
+        /// </summary>
+        /// <param name="guid">
+        /// The input <see cref="Guid"/>.
+        /// </param>
+        /// <returns>
+        /// A string of 32 hexadecimal digits representing the <paramref name="guid"/>.
+        /// </returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static string GetUnityGuidString(Guid guid)
+        {
+            return guid.ToString("N");
+        }
+
+        /// <summary>
+        /// Parse a guid string obtained from Unity API.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Guid ParseUnityGuidString(string guidString)
+        {
+            Enforce.Argument(guidString, nameof(guidString)).IsNotNullOrEmpty();
+
+            Enforce.Argument(guidString, nameof(guidString)).Condition(
+                Guid.TryParseExact(guidString, "N", out Guid guid), "Failed to parse Guid.");
+
+            return guid;
+        }
     }
 }

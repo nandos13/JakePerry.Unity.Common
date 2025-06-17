@@ -4,16 +4,21 @@ using UnityEngine;
 
 using static JakePerry.Unity.EditorHelpersStatic;
 
+// TODO: Rethink this drawer. By default, this should just display as a string.
+// With some attribute, it should support drawing as if it were an object selector.
+// ie. [DrawObjectGuidSelectorAttribute]
+// Maybe the Resources attribute can then extend this?
+
 namespace JakePerry.Unity
 {
-    [CustomPropertyDrawer(typeof(SerializeGuid))]
-    public sealed class SerializeGuidDrawer : PropertyDrawer
+    [CustomPropertyDrawer(typeof(PackedGuid))]
+    public sealed class PackedGuidDrawer : PropertyDrawer
     {
-        private static readonly int kDragDropControlHint = "SerializeGuidDragDrop".GetHashCode();
+        private static readonly int kDragDropControlHint = "PackedGuidDragDrop".GetHashCode();
 
         private static GUIStyle _centeredObjectFieldStyle;
 
-        private bool DrawGuidField(Rect r, string guid, out SerializeGuid newGuid)
+        private bool DrawGuidField(Rect r, string guid, out PackedGuid newGuid)
         {
             EditorGUI.BeginChangeCheck();
 
@@ -28,7 +33,7 @@ namespace JakePerry.Unity
                 }
                 else if (Guid.TryParse(guid, out Guid g))
                 {
-                    newGuid = new SerializeGuid(g);
+                    newGuid = new PackedGuid(g);
                     return true;
                 }
 
@@ -39,30 +44,30 @@ namespace JakePerry.Unity
             return false;
         }
 
-        private static UnityEngine.Object DoObjectField(Rect r, int id, SerializeGuid guid)
+        private static UnityEngine.Object DoObjectField(Rect r, int id, PackedGuid guid)
         {
-            SerializeGuid.EditorUtil.TryFindAsset(guid, out UnityEngine.Object asset);
+            UnityEditorHelper.TryGetProjectAsset(guid, out UnityEngine.Object asset);
             return EditorGUI.ObjectField(r, asset, typeof(UnityEngine.Object), allowSceneObjects: false);
         }
 
-        private bool DrawDragDropTarget(Rect r, ref SerializeGuid guid)
+        private bool DrawDragDropTarget(Rect r, ref PackedGuid guid)
         {
-            var id = GUIUtility.GetControlID(kDragDropControlHint, FocusType.Keyboard, r);
+            int id = GUIUtility.GetControlID(kDragDropControlHint, FocusType.Keyboard, r);
 
             bool isDragging = (DragAndDrop.paths?.Length ?? 0) > 0;
 
-            var buttonRect = new RectOffset((int)(r.width - LineHeight), 0, 0, 0).Remove(r);
+            Rect buttonRect = new RectOffset((int)(r.width - LineHeight), 0, 0, 0).Remove(r);
 
-            var current = Event.current;
+            Event current = Event.current;
 
             switch (current.type)
             {
                 case EventType.Repaint:
                     {
-                        var color = GUI.contentColor;
+                        Color color = GUI.contentColor;
                         if (isDragging) GUI.contentColor = Color.yellow;
 
-                        var content = EditorGUIUtility.IconContent("GameObject On Icon");
+                        GUIContent content = EditorGUIUtility.IconContent("GameObject On Icon");
                         content.tooltip = "Drag & Drop a project asset to capture its GUID";
 
                         if (_centeredObjectFieldStyle == null)
@@ -80,7 +85,8 @@ namespace JakePerry.Unity
                 case EventType.DragPerform:
                     {
                         EditorGUI.BeginChangeCheck();
-                        var dragObj = DoObjectField(r, id, guid);
+                        UnityEngine.Object dragObj = DoObjectField(r, id, guid);
+
                         if (EditorGUI.EndChangeCheck())
                         {
                             if (dragObj == null)
@@ -90,10 +96,9 @@ namespace JakePerry.Unity
                             }
                             else
                             {
-                                if (SerializeGuid.EditorUtil.TryGetGuidFromAsset(dragObj, out SerializeGuid g))
+                                if (UnityEditorHelper.TryGetProjectAssetGuid(dragObj, out Guid g))
                                 {
-                                    guid = g;
-                                    return true;
+                                    return TryGet.Pass(g, out guid);
                                 }
 
                                 Debug.LogError($"Failed to find GUID for the dragged asset");
@@ -111,7 +116,8 @@ namespace JakePerry.Unity
                             current.Use();
 
                             EditorGUI.BeginChangeCheck();
-                            var selectedObj = DoObjectField(r, id, guid);
+                            UnityEngine.Object selectedObj = DoObjectField(r, id, guid);
+
                             if (EditorGUI.EndChangeCheck())
                             {
                                 if (selectedObj == null)
@@ -121,10 +127,9 @@ namespace JakePerry.Unity
                                 }
                                 else
                                 {
-                                    if (SerializeGuid.EditorUtil.TryGetGuidFromAsset(selectedObj, out SerializeGuid g))
+                                    if (UnityEditorHelper.TryGetProjectAssetGuid(selectedObj, out Guid g))
                                     {
-                                        guid = g;
-                                        return true;
+                                        return TryGet.Pass(g, out guid);
                                     }
 
                                     Debug.LogError($"Failed to find GUID for the selected asset");
@@ -147,21 +152,21 @@ namespace JakePerry.Unity
             return false;
         }
 
-        private void ShowContextMenu(SerializeGuid guid, SerializedProperty property)
+        private void ShowContextMenu(PackedGuid guid, SerializedProperty property)
         {
-            var menu = new GenericMenu();
+            GenericMenu menu = new();
 
-            SerializeGuid.EditorUtil.AddCopyGuidCommand(menu, guid);
-            SerializeGuid.EditorUtil.AddPasteGuidCommand(menu, property);
-
-            menu.AddSeparator(null);
-
-            SerializeGuid.EditorUtil.AddNewGuidCommand(menu, property);
-            SerializeGuid.EditorUtil.AddClearGuidCommand(menu, property);
+            GuidEditorUtil.AddCopyGuidCommand(menu, guid);
+            GuidEditorUtil.AddPasteGuidCommand(menu, property);
 
             menu.AddSeparator(null);
 
-            SerializeGuid.EditorUtil.AddFindAssetFromGuidCommand(menu, guid);
+            GuidEditorUtil.AddNewGuidCommand(menu, property);
+            GuidEditorUtil.AddClearGuidCommand(menu, property);
+
+            menu.AddSeparator(null);
+
+            GuidEditorUtil.AddFindAssetFromGuidCommand(menu, guid);
 
             menu.ShowAsContext();
         }
@@ -181,19 +186,23 @@ namespace JakePerry.Unity
             position = EditorGUI.PrefixLabel(position, label);
             using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
             {
-                var guid = SerializeGuid.EditorUtil.GetGuid(property);
+                PackedGuid guid = GuidEditorUtil.GetGuid(property);
 
-                var optionsRect = new RectOffset((int)(position.width - LineHeight - Spacing), 0, 0, 0).Remove(position);
-                var guidRect = new RectOffset(0, (int)(LineHeight + dragDropWidth + Spacing * 2), 0, 0).Remove(position);
-                var dragDropRect = new RectOffset((int)(guidRect.width + Spacing), (int)(optionsRect.width + Spacing), 0, 0).Remove(position);
+                // TODO: Struct or static approach for RectOffset.
+                Rect optionsRect = new RectOffset((int)(position.width - LineHeight - Spacing), 0, 0, 0).Remove(position);
+                Rect guidRect = new RectOffset(0, (int)(LineHeight + dragDropWidth + Spacing * 2), 0, 0).Remove(position);
+                Rect dragDropRect = new RectOffset((int)(guidRect.width + Spacing), (int)(optionsRect.width + Spacing), 0, 0).Remove(position);
 
-                if (DrawGuidField(guidRect, guid.UnityGuidString, out SerializeGuid newGuid))
+                string unityGuidString = UnityHelper.GetUnityGuidString(guid);
+
+                if (DrawGuidField(guidRect, unityGuidString, out PackedGuid newGuid))
                 {
-                    SerializeGuid.EditorUtil.SetGuid(property, newGuid);
+                    GuidEditorUtil.SetGuid(property, newGuid);
                 }
+
                 if (DrawDragDropTarget(dragDropRect, ref guid))
                 {
-                    SerializeGuid.EditorUtil.SetGuid(property, guid);
+                    GuidEditorUtil.SetGuid(property, guid);
                 }
 
                 // Draw options context menu button
