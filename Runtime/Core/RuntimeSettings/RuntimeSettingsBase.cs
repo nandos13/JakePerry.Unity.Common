@@ -12,7 +12,7 @@ namespace JakePerry.Unity
     /// </summary>
     public abstract class RuntimeSettingsBase : ScriptableObject
     {
-        private const string kSettingsDir = Project.kGeneratedAssetsDir + "Resources/Settings/";
+        private const string kSettingsDir = Project.GeneratedAssetsDir + "Resources/Settings/";
 
         private static readonly Dictionary<Type, RuntimeSettingsBase> _cache = new();
 

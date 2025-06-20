@@ -1,7 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Unity.Profiling;
 using UnityEngine;
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace JakePerry.Unity
 {
@@ -54,7 +59,6 @@ namespace JakePerry.Unity
         }
 
 #if UNITY_EDITOR
-
         private static bool Editor_TryGetTrueResourcePath(PackedGuid guid, out string resourcePath)
         {
             if (!guid.IsDefaultValue)
@@ -65,7 +69,6 @@ namespace JakePerry.Unity
 
             return TryGet.Fail(out resourcePath);
         }
-
 #endif // UNITY_EDITOR
 
         public static bool TryGetResourcePath(Guid guid, out string resourcePath)
@@ -75,7 +78,6 @@ namespace JakePerry.Unity
             if (TryGetResourcePathNoFallback(guid, out resourcePath))
             {
 #if UNITY_EDITOR
-
                 using var profilingScope2 = ProfilingEx.Markers.EditorOnly.Auto();
 
                 // Editor validation: Check that the cached resource path is accurate
@@ -90,14 +92,12 @@ namespace JakePerry.Unity
 
                     return true;
                 }
-
 #endif // UNITY_EDITOR
 
                 return true;
             }
 
 #if UNITY_EDITOR
-
             using var profilingScope3 = ProfilingEx.Markers.EditorOnly.Auto();
 
             // Editor fallback: Gracefully load resources that are not in the manifest & log an error.
@@ -110,44 +110,93 @@ namespace JakePerry.Unity
 
                 return true;
             }
-
 #endif // UNITY_EDITOR
 
             return TryGet.Fail(out resourcePath);
         }
 
 #if UNITY_EDITOR
-        // TODO: EditorCode class?
-        internal static bool Editor_TryGetResourcePathNoEditorFallback(Guid guid, out string resourcePath)
+        internal static class EditorCode
         {
-            return TryGetResourcePathNoFallback(guid, out resourcePath);
-        }
+            const string AssetsPath = Project.GeneratedAssetsDir + "Resources/" + ResourcesPath + ".asset";
 
-        internal void Editor_AddToCache(Guid guid, string resourcePath)
-        {
-            Pair pair = new() { guid = guid, path = resourcePath };
-
-            m_pairs ??= new Pair[0];
-            UnityEditor.ArrayUtility.Add(ref m_pairs, pair);
-
-            // Clear memory cache
-            _lookup = null;
-        }
-
-        internal void Editor_SetCache(List<(Guid, string)> list)
-        {
-            int c = list.Count;
-            Pair[] pairs = new Pair[c];
-
-            for (int i = 0; i < c; ++i)
+            internal static bool TryGetResourcePathNoEditorFallback(Guid guid, out string resourcePath)
             {
-                pairs[i] = new() { guid = list[i].Item1, path = list[i].Item2 };
+                return TryGetResourcePathNoFallback(guid, out resourcePath);
             }
 
-            m_pairs = pairs;
+            internal static void AddToCache(ResourceGuidManifest manifest, Guid guid, string resourcePath)
+            {
+                Enforce.Argument(manifest, nameof(manifest)).IsNotNull();
 
-            // Clear memory cache
-            _lookup = null;
+                Pair pair = new() { guid = guid, path = resourcePath };
+
+                manifest.m_pairs ??= Array.Empty<Pair>();
+
+                UnityEditor.ArrayUtility.Add(ref manifest.m_pairs, pair);
+
+                // Clear memory cache
+                _lookup = null;
+            }
+
+            internal static void SetCache(ResourceGuidManifest manifest, List<(Guid, string)> list)
+            {
+                Enforce.Argument(manifest, nameof(manifest)).IsNotNull();
+                Enforce.Argument(list, nameof(list)).IsNotNull();
+
+                int c = list.Count;
+                Pair[] pairs = new Pair[c];
+
+                for (int i = 0; i < c; ++i)
+                {
+                    pairs[i] = new Pair() { guid = list[i].Item1, path = list[i].Item2 };
+                }
+
+                manifest.m_pairs = pairs;
+
+                // Clear memory cache
+                _lookup = null;
+            }
+
+            internal static ResourceGuidManifest GetOrCreateManifestAsset()
+            {
+                ResourceGuidManifest manifest = AssetDatabase.LoadAssetAtPath<ResourceGuidManifest>(AssetsPath);
+
+                if (manifest == null)
+                {
+                    string manifestPathOnDisk = Path.Combine(Project.GetProjectPath(), AssetsPath);
+                    new FileInfo(manifestPathOnDisk).Directory.Create();
+
+                    manifest = ScriptableObject.CreateInstance<ResourceGuidManifest>();
+                    AssetDatabase.CreateAsset(manifest, AssetsPath);
+
+                    EditorUtility.SetDirty(manifest);
+                }
+
+                return manifest;
+            }
+
+            [MenuItem(Project.ContextMenuItemsPath + "Generate/Resources GUID Cache")]
+            internal static void GenerateResourceGuidManifest()
+            {
+                List<(Guid, string)> pairs = new();
+
+                foreach (string path in AssetDatabase.GetAllAssetPaths())
+                {
+                    if (ResourcesEx.TryGetResourcesPath(path, out string resourcePath))
+                    {
+                        Guid guid = Guid.ParseExact(AssetDatabase.GUIDFromAssetPath(path).ToString(), "N");
+                        pairs.Add((guid, resourcePath));
+                    }
+                }
+
+                ResourceGuidManifest manifest = GetOrCreateManifestAsset();
+
+                ResourceGuidManifest.EditorCode.SetCache(manifest, pairs);
+
+                EditorUtility.SetDirty(manifest);
+                AssetDatabase.SaveAssetIfDirty(manifest);
+            }
         }
 #endif // UNITY_EDITOR
     }

@@ -4,45 +4,34 @@ using UnityEngine;
 
 using static JakePerry.Unity.EditorHelpersStatic;
 
-// TODO: Rethink this drawer. By default, this should just display as a string.
-// With some attribute, it should support drawing as if it were an object selector.
-// ie. [DrawObjectGuidSelectorAttribute]
-// Maybe the Resources attribute can then extend this?
-
 namespace JakePerry.Unity
 {
     [CustomPropertyDrawer(typeof(PackedGuid))]
-    public sealed class PackedGuidDrawer : PropertyDrawer
+    public sealed class PackedGuidDrawer : GuidDrawer
+    {
+        public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
+        {
+            return LineHeight;
+        }
+
+        protected override void DrawGUI(PackedGuid guid, Rect position, SerializedProperty property, GUIContent label)
+        {
+            string unityGuidString = UnityHelper.GetUnityGuidString(guid);
+
+            if (DrawGuidField(position, unityGuidString, out PackedGuid newGuid))
+            {
+                SetGuid(property, newGuid);
+            }
+        }
+    }
+
+    // TODO: Worth retaining the old logic with the drag-drop element?
+    // This class is no longer used. Delete it later...
+    internal sealed class PackedGuidDrawerOld : PropertyDrawer
     {
         private static readonly int kDragDropControlHint = "PackedGuidDragDrop".GetHashCode();
 
         private static GUIStyle _centeredObjectFieldStyle;
-
-        private bool DrawGuidField(Rect r, string guid, out PackedGuid newGuid)
-        {
-            EditorGUI.BeginChangeCheck();
-
-            guid = EditorGUI.DelayedTextField(r, guid);
-
-            if (EditorGUI.EndChangeCheck())
-            {
-                if (string.IsNullOrEmpty(guid))
-                {
-                    newGuid = default;
-                    return true;
-                }
-                else if (Guid.TryParse(guid, out Guid g))
-                {
-                    newGuid = new PackedGuid(g);
-                    return true;
-                }
-
-                Debug.LogError($"Failed to parse string as a valid Guid.");
-            }
-
-            newGuid = default;
-            return false;
-        }
 
         private static UnityEngine.Object DoObjectField(Rect r, int id, PackedGuid guid)
         {
@@ -56,7 +45,7 @@ namespace JakePerry.Unity
 
             bool isDragging = (DragAndDrop.paths?.Length ?? 0) > 0;
 
-            Rect buttonRect = new RectOffset((int)(r.width - LineHeight), 0, 0, 0).Remove(r);
+            Rect buttonRect = r.PadLeft(r.width - LineHeight);
 
             Event current = Event.current;
 
@@ -91,14 +80,13 @@ namespace JakePerry.Unity
                         {
                             if (dragObj == null)
                             {
-                                guid = default;
-                                return true;
+                                return TryGet.Pass(out guid, default);
                             }
                             else
                             {
                                 if (UnityEditorHelper.TryGetProjectAssetGuid(dragObj, out Guid g))
                                 {
-                                    return TryGet.Pass(g, out guid);
+                                    return TryGet.Pass(out guid, g);
                                 }
 
                                 Debug.LogError($"Failed to find GUID for the dragged asset");
@@ -122,14 +110,13 @@ namespace JakePerry.Unity
                             {
                                 if (selectedObj == null)
                                 {
-                                    guid = default;
-                                    return true;
+                                    return TryGet.Pass(out guid, default);
                                 }
                                 else
                                 {
                                     if (UnityEditorHelper.TryGetProjectAssetGuid(selectedObj, out Guid g))
                                     {
-                                        return TryGet.Pass(g, out guid);
+                                        return TryGet.Pass(out guid, g);
                                     }
 
                                     Debug.LogError($"Failed to find GUID for the selected asset");
@@ -150,67 +137,6 @@ namespace JakePerry.Unity
             }
 
             return false;
-        }
-
-        private void ShowContextMenu(PackedGuid guid, SerializedProperty property)
-        {
-            GenericMenu menu = new();
-
-            GuidEditorUtil.AddCopyGuidCommand(menu, guid);
-            GuidEditorUtil.AddPasteGuidCommand(menu, property);
-
-            menu.AddSeparator(null);
-
-            GuidEditorUtil.AddNewGuidCommand(menu, property);
-            GuidEditorUtil.AddClearGuidCommand(menu, property);
-
-            menu.AddSeparator(null);
-
-            GuidEditorUtil.AddFindAssetFromGuidCommand(menu, guid);
-
-            menu.ShowAsContext();
-        }
-
-        public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
-        {
-            return LineHeight;
-        }
-
-        public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
-        {
-            // For reasons I can't comprehend, rect height is 2 pixels larger when drawing an array element
-            position.height = GetPropertyHeight(property, label);
-
-            float dragDropWidth = LineHeight + Spacing + 36;
-
-            position = EditorGUI.PrefixLabel(position, label);
-            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
-            {
-                PackedGuid guid = GuidEditorUtil.GetGuid(property);
-
-                // TODO: Struct or static approach for RectOffset.
-                Rect optionsRect = new RectOffset((int)(position.width - LineHeight - Spacing), 0, 0, 0).Remove(position);
-                Rect guidRect = new RectOffset(0, (int)(LineHeight + dragDropWidth + Spacing * 2), 0, 0).Remove(position);
-                Rect dragDropRect = new RectOffset((int)(guidRect.width + Spacing), (int)(optionsRect.width + Spacing), 0, 0).Remove(position);
-
-                string unityGuidString = UnityHelper.GetUnityGuidString(guid);
-
-                if (DrawGuidField(guidRect, unityGuidString, out PackedGuid newGuid))
-                {
-                    GuidEditorUtil.SetGuid(property, newGuid);
-                }
-
-                if (DrawDragDropTarget(dragDropRect, ref guid))
-                {
-                    GuidEditorUtil.SetGuid(property, guid);
-                }
-
-                // Draw options context menu button
-                if (EditorGUIEx.ThreeDotMenuButton(optionsRect))
-                {
-                    ShowContextMenu(guid, property);
-                }
-            }
         }
     }
 }

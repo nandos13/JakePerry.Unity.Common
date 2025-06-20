@@ -13,8 +13,8 @@ namespace JakePerry.Unity
 
         private sealed class GuiEnabledScope : IDisposable
         {
-            private static readonly Stack<bool> _restoreStates = new Stack<bool>();
-            private static readonly GuiEnabledScope _inst = new GuiEnabledScope();
+            private static readonly Stack<bool> _restoreStates = new();
+            private static readonly GuiEnabledScope _inst = new();
 
             public static GuiEnabledScope Push(bool enabled)
             {
@@ -38,6 +38,36 @@ namespace JakePerry.Unity
             }
 
             public void Dispose() => Pop();
+        }
+
+        /// <summary>
+        /// Lightweight alternative to <see cref="EditorGUI.IndentLevelScope"/>,
+        /// no allocation required.
+        /// </summary>
+        public readonly struct IndentLevelScope : IDisposable
+        {
+            private readonly int m_indent;
+
+            /// <summary>
+            /// Create a scope with an indent level of zero.
+            /// </summary>
+            public static IndentLevelScope Zero => new(-EditorGUI.indentLevel);
+
+            /// <summary>
+            /// Create a scope with an indent level of one more than its current value.
+            /// </summary>
+            public static IndentLevelScope Increment => new(1);
+
+            public IndentLevelScope(int increment)
+            {
+                m_indent = increment;
+                EditorGUI.indentLevel += m_indent;
+            }
+
+            public void Dispose()
+            {
+                EditorGUI.indentLevel -= m_indent;
+            }
         }
 
         public static GUIContent MixedValueContent =>
@@ -272,7 +302,7 @@ namespace JakePerry.Unity
         public static bool ThreeDotMenuButton(Rect position)
         {
             bool result = false;
-            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+            using (IndentLevelScope.Zero)
             {
                 var id = GUIUtility.GetControlID(kOptionsControlHint, FocusType.Keyboard, position);
 

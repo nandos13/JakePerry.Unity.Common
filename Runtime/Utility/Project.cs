@@ -9,8 +9,8 @@ namespace JakePerry.Unity
     /// </summary>
     public static class Project
     {
-        public const string kContextMenuItemsPath = "Plugins/JakePerry/";
-        public const string kGeneratedAssetsDir = "Assets/Generated/JakePerry/";
+        public const string ContextMenuItemsPath = "Plugins/JakePerry/";
+        public const string GeneratedAssetsDir = "Assets/Generated/JakePerry/";
 
         /// <summary>
         /// Get the path on disk to the project. This is equal to <see cref="Application.dataPath"/>
@@ -20,7 +20,7 @@ namespace JakePerry.Unity
         {
             // Trim "/Assets" from the end of the path
             var path = Application.dataPath;
-            return path.Substring(0, path.Length - 7);
+            return path[..^7];
         }
     }
 }

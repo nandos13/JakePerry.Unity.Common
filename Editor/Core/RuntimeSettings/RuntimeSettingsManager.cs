@@ -24,7 +24,7 @@ namespace JakePerry.Unity
         }
 
         [InitializeOnLoadMethod]
-        [MenuItem(Project.kContextMenuItemsPath + "Settings/Create missing settings assets")]
+        [MenuItem(Project.ContextMenuItemsPath + "Settings/Create missing settings assets")]
         private static void CreateMissingSettingsAssets()
         {
             bool didCreateAnyAssets = false;

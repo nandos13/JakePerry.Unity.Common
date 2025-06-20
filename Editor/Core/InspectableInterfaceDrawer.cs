@@ -60,7 +60,7 @@ namespace JakePerry.Unity
             UnityEngine.Object newTarget;
             EditorGUI.BeginChangeCheck();
             {
-                using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+                using (EditorGUIEx.IndentLevelScope.Zero)
                 {
                     newTarget = EditorGUI.ObjectField(contentRect, target, typeRestriction, allowSceneObjects: true);
                 }

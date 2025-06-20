@@ -175,7 +175,7 @@ namespace JakePerry.Unity.Events
             var hintContent = GetTempContent(icon);
             hintContent.tooltip = tooltip;
 
-            using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+            using (EditorGUIEx.IndentLevelScope.Zero)
             {
                 EditorGUI.LabelField(rect, hintContent, iconStyle);
             }
@@ -953,7 +953,7 @@ namespace JakePerry.Unity.Events
                 var headerRect = position.WithHeight(kHeaderHeight);
                 position = position.PadTop(headerRect.height + Spacing);
 
-                using (new EditorGUI.IndentLevelScope(-EditorGUI.indentLevel))
+                using (EditorGUIEx.IndentLevelScope.Zero)
                 {
                     DrawHeader(headerRect, label);
 

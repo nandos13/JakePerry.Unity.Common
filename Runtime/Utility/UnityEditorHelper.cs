@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 
 using System;
+using System.Buffers.Binary;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -12,7 +13,7 @@ namespace JakePerry.Unity
 {
     public static class UnityEditorHelper
     {
-        [StructLayout(LayoutKind.Explicit, Size = 128)]
+        [StructLayout(LayoutKind.Explicit, Size = 16)]
         private struct GuidConverter
         {
             [FieldOffset(0)]
@@ -20,6 +21,70 @@ namespace JakePerry.Unity
 
             [FieldOffset(0)]
             public GUID unityGuid;
+
+            [FieldOffset(0)] private int a;
+            [FieldOffset(0)] private byte a1;
+            [FieldOffset(1)] private byte a2;
+            [FieldOffset(2)] private byte a3;
+            [FieldOffset(3)] private byte a4;
+
+            [FieldOffset(4)] private short b;
+            [FieldOffset(4)] private byte b1;
+            [FieldOffset(5)] private byte b2;
+
+            [FieldOffset(6)] private short c;
+            [FieldOffset(6)] private byte c1;
+            [FieldOffset(7)] private byte c2;
+
+            [FieldOffset(8)] private byte d;
+            [FieldOffset(9)] private byte e;
+            [FieldOffset(10)] private byte f;
+            [FieldOffset(11)] private byte g;
+            [FieldOffset(12)] private byte h;
+            [FieldOffset(13)] private byte i;
+            [FieldOffset(14)] private byte j;
+            [FieldOffset(15)] private byte k;
+
+            /// <summary>
+            /// Break a byte into segments of 4 low bits &amp; 4 high bits, then swap the segments.
+            /// </summary>
+            private static byte Swizzle4(byte b)
+            {
+                byte low = (byte)(b & 0x0F);
+                byte high = (byte)(b >> 4);
+
+                return (byte)((low << 4) + high);
+            }
+
+            /// <summary>
+            /// Swizzle the bytes of the Guid to convert from one format to the other.
+            /// </summary>
+            public void Swizzle()
+            {
+                a = BinaryPrimitives.ReverseEndianness(a);
+                b = BinaryPrimitives.ReverseEndianness(b);
+                c = BinaryPrimitives.ReverseEndianness(c);
+
+                a1 = Swizzle4(a1);
+                a2 = Swizzle4(a2);
+                a3 = Swizzle4(a3);
+                a4 = Swizzle4(a4);
+
+                b1 = Swizzle4(b1);
+                b2 = Swizzle4(b2);
+
+                c1 = Swizzle4(c1);
+                c2 = Swizzle4(c2);
+
+                d = Swizzle4(d);
+                e = Swizzle4(e);
+                f = Swizzle4(f);
+                g = Swizzle4(g);
+                h = Swizzle4(h);
+                i = Swizzle4(i);
+                j = Swizzle4(j);
+                k = Swizzle4(k);
+            }
         }
 
         /// <summary>
@@ -54,6 +119,8 @@ namespace JakePerry.Unity
         public static GUID ToUnityGuid(Guid guid)
         {
             GuidConverter c = new() { systemGuid = guid };
+            c.Swizzle();
+
             return c.unityGuid;
         }
 
@@ -64,6 +131,8 @@ namespace JakePerry.Unity
         public static Guid ToSystemGuid(GUID guid)
         {
             GuidConverter c = new() { unityGuid = guid };
+            c.Swizzle();
+
             return c.systemGuid;
         }
 
