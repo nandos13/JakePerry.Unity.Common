@@ -10,23 +10,19 @@ namespace JakePerry.Unity
     [CustomPropertyDrawer(typeof(ResourceReferenceAttribute))]
     public sealed class ResourceReferenceAttributeDrawer : GuidDrawer
     {
-        // TODO: This is useful, make it a utility method?
         private static bool ShowErrorContent(ref Rect position, string tooltip, bool warn = false)
         {
+            MessageType messageType = warn ? MessageType.Warning : MessageType.Error;
+
             Rect iconRect = position.PadLeft(position.width - position.height);
             position = position.PadRight(iconRect.width + Spacing);
 
-            Texture2D icon = UnityEditorHelper.GetMessageIcon(warn ? MessageType.Warning : MessageType.Error);
-            GUIStyle iconStyle = EditorStyles.iconButton;
-            Rect iconRect2 = iconStyle.margin.Remove(iconRect);
+            if (EditorGUIEx.ShowIconMessageContent(iconRect, tooltip, messageType))
+            {
+                return Event.current.control;
+            }
 
-            GUIContent content = new(icon) { tooltip = tooltip };
-            EditorGUI.LabelField(iconRect2, content, iconStyle);
-
-            Event evt = Event.current;
-            return evt.control
-                && evt.type == EventType.MouseDown
-                && iconRect.Contains(evt.mousePosition);
+            return false;
         }
 
         protected override GenericMenu ConstructContextMenu(PackedGuid guid, SerializedProperty property)

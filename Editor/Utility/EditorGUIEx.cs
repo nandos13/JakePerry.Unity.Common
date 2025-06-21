@@ -5,6 +5,8 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
+using static JakePerry.Unity.EditorHelpersStatic;
+
 namespace JakePerry.Unity
 {
     public static partial class EditorGUIEx
@@ -314,6 +316,20 @@ namespace JakePerry.Unity
             }
 
             return result;
+        }
+
+        public static bool ShowIconMessageContent(Rect position, string tooltip, MessageType messageType)
+        {
+            Texture2D icon = UnityEditorHelper.GetMessageIcon(messageType);
+            GUIStyle iconStyle = EditorStyles.iconButton;
+            Rect iconRect2 = iconStyle.margin.Remove(position);
+
+            GUIContent content = GetTempContent(icon, tooltip: tooltip);
+
+            EditorGUI.LabelField(iconRect2, content, iconStyle);
+
+            Event evt = Event.current;
+            return evt.type == EventType.MouseDown && position.Contains(evt.mousePosition);
         }
     }
 }
